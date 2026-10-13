@@ -238,7 +238,8 @@ private fun graphModel(data: GameData, result: ProductionResult, links: CodexLin
             is RecipeNode -> GraphViewNode(
                 node.id,
                 node.usage.recipe.name,
-                "${fmt(node.usage.amount)}× ${node.usage.machine.name}",
+                "${fmt(node.usage.amount * 100 / node.usage.clockSpeed)}× ${node.usage.machine.name}" +
+                    if (node.usage.clockSpeed != 100.0) " at ${fmt(node.usage.clockSpeed, 2)} %" else "",
                 RecipeColor,
                 details = node.machines.machines.map { "${it.amount}× ${node.usage.machine.name} at ${fmt(it.clockSpeed, 4)} % clock speed" } +
                     listOf("Needed power: ${fmt(node.machines.power.average)} MW") +

@@ -50,4 +50,17 @@ data class ProductionRequest(
     val input: List<InputItem> = emptyList(),
     /** App-only: extractor, purity, clock speed and node count per raw resource. */
     val extraction: Map<String, ResourceExtraction> = emptyMap(),
-)
+    /** App-only: clock speed in % for production buildings, and per building overrides. */
+    val clockSpeed: Double = 100.0,
+    val machineClockSpeed: Map<String, Double> = emptyMap(),
+) {
+    /** Clock speed the planner runs [machine] at, kept within what the game allows. */
+    fun clockSpeedFor(machine: String): Double =
+        (machineClockSpeed[machine] ?: clockSpeed).coerceIn(MIN_CLOCK_SPEED, MAX_CLOCK_SPEED)
+
+    companion object {
+        const val MIN_CLOCK_SPEED = 1.0
+        /** 100 % plus three Power Shards. */
+        const val MAX_CLOCK_SPEED = 250.0
+    }
+}

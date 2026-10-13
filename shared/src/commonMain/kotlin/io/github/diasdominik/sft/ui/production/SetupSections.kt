@@ -43,6 +43,7 @@ import io.github.diasdominik.sft.planner.Extraction
 import io.github.diasdominik.sft.planner.InputItem
 import io.github.diasdominik.sft.planner.ResourceExtraction
 import io.github.diasdominik.sft.planner.ProductionItem
+import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionType
 import io.github.diasdominik.sft.state.ProductionTab
 import io.github.diasdominik.sft.ui.EntityIcon
@@ -418,7 +419,24 @@ private fun RecipeToggleList(data: GameData, tab: ProductionTab, recipes: List<R
 }
 
 internal fun LazyListScope.machinesSection(data: GameData, tab: ProductionTab) {
-    item { Hint("Disable buildings you can't or don't want to use. Their recipes are then excluded too.") }
+    item {
+        Hint(
+            "Disable buildings you can't or don't want to use. Their recipes are then excluded too. " +
+                "Set a clock speed (1–250 %) to plan under- or overclocked buildings: fewer buildings when overclocked, " +
+                "and power follows the game's clock speed curve.",
+        )
+    }
+    item {
+        RowCard {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("All buildings", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                ClockField(tab.request.clockSpeed) { v ->
+                    // Setting all buildings replaces the per-building values.
+                    tab.updateRequest { r -> r.copy(clockSpeed = v, machineClockSpeed = emptyMap()) }
+                }
+            }
+        }
+    }
     items(data.manufacturers, key = { "m" + it.className }) { machine ->
         val enabled = machine.className !in tab.request.blockedMachines
         Row(
@@ -431,6 +449,24 @@ internal fun LazyListScope.machinesSection(data: GameData, tab: ProductionTab) {
             EntityIcon(data, machine.className, 32.dp)
             Spacer(Modifier.width(8.dp))
             Text(machine.name, modifier = Modifier.weight(1f))
+            if (enabled) {
+                ClockField(tab.request.clockSpeedFor(machine.className)) { v ->
+                    tab.updateRequest { r ->
+                        r.copy(machineClockSpeed = if (v == r.clockSpeed) r.machineClockSpeed - machine.className else r.machineClockSpeed + (machine.className to v))
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun ClockField(value: Double, onValueChange: (Double) -> Unit) {
+    NumberField(
+        value,
+        { v -> if (v > 0) onValueChange(v.coerceIn(ProductionRequest.MIN_CLOCK_SPEED, ProductionRequest.MAX_CLOCK_SPEED)) },
+        modifier = Modifier.width(120.dp),
+        label = "Clock",
+        suffix = "%",
+    )
 }

@@ -13,8 +13,11 @@ data class SolverOutput(
     val byproducts: Map<String, Double>,
 )
 
-/** [amount] is the number of machines running at 100 % clock speed (may be fractional). */
-data class RecipeUsage(val recipe: Recipe, val machine: Building, val amount: Double, val clockSpeed: Int = 100)
+/**
+ * [amount] is the throughput in machines running at 100 % (may be fractional); [clockSpeed] is what
+ * the machines actually run at, so the real machine count is amount × 100 / clockSpeed.
+ */
+data class RecipeUsage(val recipe: Recipe, val machine: Building, val amount: Double, val clockSpeed: Double = 100.0)
 
 /**
  * Replaces the upstream server-side solver (api.satisfactorytools.com/v2/solver) with an
@@ -131,7 +134,8 @@ class ProductionSolver(private val data: GameData) {
 
         val usages = recipeVar.mapNotNull { (recipe, variable) ->
             val amount = clean(solution[variable])
-            if (amount > 0) RecipeUsage(recipe, data.machineFor(recipe)!!, amount) else null
+            val machine = data.machineFor(recipe)!!
+            if (amount > 0) RecipeUsage(recipe, machine, amount, request.clockSpeedFor(machine.className)) else null
         }
         val mined = resourceVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
         val inputs = inputVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }

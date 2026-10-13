@@ -3,7 +3,6 @@ package io.github.diasdominik.sft.planner
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.Recipe
 import kotlin.math.abs
-import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.pow
 
@@ -21,7 +20,7 @@ sealed class GraphNode {
 }
 
 class RecipeNode(val usage: RecipeUsage) : GraphNode() {
-    private val multiplier = usage.amount * usage.machine.metadata.manufacturingSpeed * (usage.clockSpeed / 100.0) * (60.0 / usage.recipe.time)
+    private val multiplier = usage.amount * usage.machine.metadata.manufacturingSpeed * (60.0 / usage.recipe.time)
     override val inputs = usage.recipe.ingredients.map { ResourceAmount(it.item, it.amount * multiplier, 0.0) }
     override val outputs = usage.recipe.products.map { ResourceAmount(it.item, it.amount * multiplier, it.amount * multiplier) }
     val machines = MachineGroup(usage)
@@ -114,7 +113,7 @@ class MachineGroup(private val usage: RecipeUsage) {
         val exact = usage.amount * 100 / usage.clockSpeed
         val list = mutableListOf<MachineGroupItem>()
         val full = floor(exact + 1e-9).toInt()
-        if (full > 0) list += machine(full, usage.clockSpeed.toDouble())
+        if (full > 0) list += machine(full, usage.clockSpeed)
         val rest = exact - full
         if (rest > 1e-6) list += machine(1, Numbers.ceil(rest * usage.clockSpeed, 4))
         machines = list
@@ -171,7 +170,7 @@ data class ItemDetails(
 data class InputDetails(val used: Double, val max: Double, val usedPercentage: Double, val producedExtra: Double)
 data class RawResourceDetails(val enabled: Boolean, val max: Double, val used: Double, val usedPercentage: Double)
 
-data class RecipePowerDetails(val clockSpeed: Int, val amount: Int, val machines: List<MachineGroupItem>, val power: Power)
+data class RecipePowerDetails(val clockSpeed: Double, val amount: Int, val machines: List<MachineGroupItem>, val power: Power)
 data class MachinePowerDetails(val amount: Int, val power: Power, val recipes: Map<String, RecipePowerDetails>)
 data class PowerDetails(val total: Power, val byBuilding: Map<String, MachinePowerDetails>)
 
@@ -202,7 +201,7 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
         val counts = LinkedHashMap<String, Int>()
         for (node in graph.nodes.filterIsInstance<RecipeNode>()) {
             val building = node.usage.machine.className
-            val amount = ceil(node.usage.amount - 1e-9).toInt()
+            val amount = node.machines.count
             counts.mergeWith(building, amount) { a, b -> a + b }
             recipesByBuilding.getOrPut(building) { LinkedHashMap() }[node.usage.recipe.className] =
                 RecipeBuildingDetails(amount, buildingCost(building, amount))
@@ -337,7 +336,7 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
             val machine = e.extractor.className
             val power = Power(e.power, e.power)
             val groups = e.groups.map { MachineGroupItem(it.amount, it.clockSpeed, Power(it.power, it.power)) }
-            val details = RecipePowerDetails(e.settings.clockSpeed.toInt(), e.count, groups, power.rounded())
+            val details = RecipePowerDetails(e.settings.clockSpeed, e.count, groups, power.rounded())
             val current = byBuilding[machine]
             byBuilding[machine] = if (current == null) {
                 MachinePowerDetails(e.count, power, mapOf(e.resource to details))
