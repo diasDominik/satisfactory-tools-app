@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -176,8 +177,15 @@ fun NumberField(
     suffix: String? = null,
 ) {
     var text by remember { mutableStateOf(plain(value)) }
-    // Resync when the value changes from outside (e.g. "Set to 0"), but not while it matches what is typed.
+    var focused by remember { mutableStateOf(false) }
+    var ownChange by remember { mutableStateOf(false) }
+    // Resync when the value changes from outside (e.g. "Set to 0"). While typing, a value the parent
+    // clamped or rejected is left alone and shown once the field loses focus.
     LaunchedEffect(value) {
+        if (focused && ownChange) {
+            ownChange = false
+            return@LaunchedEffect
+        }
         val typed = text.replace(",", ".").toDoubleOrNull() ?: 0.0
         if (kotlin.math.abs(typed - value) > 1e-9) text = plain(value)
     }
@@ -187,9 +195,18 @@ fun NumberField(
             val cleaned = new.filter { it.isDigit() || it == '.' || it == ',' }
             text = cleaned
             val number = if (cleaned.isEmpty()) 0.0 else cleaned.replace(",", ".").toDoubleOrNull()
-            if (number != null) onValueChange(number)
+            if (number != null) {
+                ownChange = true
+                onValueChange(number)
+            }
         },
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { state ->
+            if (focused && !state.isFocused) {
+                ownChange = false
+                text = plain(value)
+            }
+            focused = state.isFocused
+        },
         enabled = enabled,
         singleLine = true,
         label = label?.let { { Text(it) } },

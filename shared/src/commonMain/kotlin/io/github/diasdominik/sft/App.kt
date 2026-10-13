@@ -175,8 +175,14 @@ private fun MainContent(state: AppState, data: GameData) {
                 }
                 entry<ProductionTabRoute> { route ->
                     val tab = state.tab(route.id)
-                    if (tab == null) LaunchedEffect(route) { pop() }
-                    else ProductionTabScreen(state, data, tab, links, onBack = ::pop)
+                    // A removed line closes itself, unless it is already on its way out.
+                    if (tab == null) LaunchedEffect(route) { if (current.lastOrNull() == route) pop() }
+                    else ProductionTabScreen(
+                        state, data, tab, links,
+                        onBack = ::pop,
+                        // A clone replaces the line it was cloned from, so Back returns to the list.
+                        onOpenTab = { id -> pop(); push(ProductionTabRoute(id)) },
+                    )
                 }
                 entry<ItemsRoute> { ItemsScreen(data, onOpen = links.openItem, actions = menu) }
                 entry<ItemRoute> { route ->

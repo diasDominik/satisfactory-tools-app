@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.planner.ProductionType
 import io.github.diasdominik.sft.planner.SftFormat
+import io.github.diasdominik.sft.platform.rememberSftFileReader
 import io.github.diasdominik.sft.platform.rememberTextSharer
 import io.github.diasdominik.sft.state.AppState
 import io.github.diasdominik.sft.state.ProductionTab
@@ -156,7 +157,7 @@ fun ProductionListScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        if (!selecting) TabMenu(state, tab, share)
+                        if (!selecting) TabMenu(state, tab, share, onOpen)
                     }
                 }
             }
@@ -211,13 +212,23 @@ private fun summary(data: GameData, tab: ProductionTab): String {
 }
 
 @Composable
-private fun TabMenu(state: AppState, tab: ProductionTab, share: (String, String) -> Unit) {
+private fun TabMenu(state: AppState, tab: ProductionTab, share: (String, String) -> Unit, onOpen: (Long) -> Unit) {
     var open by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
     IconButton(onClick = { open = true }) { Icon(AppIcons.MoreVert, contentDescription = "More") }
     DropdownMenu(open, onDismissRequest = { open = false }) {
-        DropdownMenuItem(text = { Text("Clone") }, leadingIcon = { Icon(AppIcons.Copy, null) }, onClick = { open = false; state.cloneTab(tab) })
+        DropdownMenuItem(text = { Text("Clone") }, leadingIcon = { Icon(AppIcons.Copy, null) }, onClick = { open = false; onOpen(state.cloneTab(tab).id) })
         DropdownMenuItem(text = { Text("Export") }, leadingIcon = { Icon(AppIcons.Share, null) }, onClick = { open = false; share(tab.name, exportTabs(listOf(tab))) })
-        DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(AppIcons.Delete, null) }, onClick = { open = false; state.removeTab(tab) })
+        DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(AppIcons.Delete, null) }, onClick = { open = false; confirmRemove = true })
+    }
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text("Remove \"${tab.name}\"?") },
+            text = { Text("This can't be undone.") },
+            confirmButton = { TextButton(onClick = { confirmRemove = false; state.removeTab(tab) }) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -227,13 +238,14 @@ fun ImportDialog(onDismiss: () -> Unit, onImport: (String) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
+    val readFile = rememberSftFileReader()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Import production lines") },
         text = {
             Column {
                 Text(
-                    "Paste the contents of a .sft export (from this app or satisfactorytools.com).",
+                    "Paste the contents of a .sft export (from this app or satisfactorytools.com)" + if (readFile != null) " or open the file." else ".",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.width(8.dp))
@@ -245,7 +257,10 @@ fun ImportDialog(onDismiss: () -> Unit, onImport: (String) -> Unit) {
                     isError = error != null,
                     supportingText = error?.let { { Text(it) } },
                 )
-                TextButton(onClick = { clipboard.getText()?.text?.let { text = it; error = null } }) { Text("Paste from clipboard") }
+                Row {
+                    TextButton(onClick = { clipboard.getText()?.text?.let { text = it; error = null } }) { Text("Paste from clipboard") }
+                    readFile?.let { read -> TextButton(onClick = { read()?.let { text = it; error = null } }) { Text("Open file…") } }
+                }
             }
         },
         confirmButton = {

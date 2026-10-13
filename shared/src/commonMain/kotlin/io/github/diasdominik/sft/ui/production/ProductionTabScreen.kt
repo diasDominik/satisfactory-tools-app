@@ -59,7 +59,14 @@ enum class ResultSection(val label: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProductionTabScreen(state: AppState, data: GameData, tab: ProductionTab, links: CodexLinks, onBack: () -> Unit) {
+fun ProductionTabScreen(
+    state: AppState,
+    data: GameData,
+    tab: ProductionTab,
+    links: CodexLinks,
+    onBack: () -> Unit,
+    onOpenTab: (Long) -> Unit,
+) {
     var page by rememberSaveable { mutableStateOf(0) }
     var setupSection by rememberSaveable { mutableStateOf(SetupSection.PRODUCTS.name) }
     var resultSection by rememberSaveable { mutableStateOf(ResultSection.OVERVIEW.name) }
@@ -80,7 +87,7 @@ fun ProductionTabScreen(state: AppState, data: GameData, tab: ProductionTab, lin
                 DropdownMenu(menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(AppIcons.Edit, null) }, onClick = { menu = false; renaming = true })
                     DropdownMenuItem(text = { Text("Change icon") }, leadingIcon = { Icon(AppIcons.Image, null) }, onClick = { menu = false; pickingIcon = true })
-                    DropdownMenuItem(text = { Text("Clone") }, leadingIcon = { Icon(AppIcons.Copy, null) }, onClick = { menu = false; state.cloneTab(tab) })
+                    DropdownMenuItem(text = { Text("Clone") }, leadingIcon = { Icon(AppIcons.Copy, null) }, onClick = { menu = false; onOpenTab(state.cloneTab(tab).id) })
                     DropdownMenuItem(text = { Text("Reset to default") }, leadingIcon = { Icon(AppIcons.Reset, null) }, onClick = { menu = false; confirmReset = true })
                     DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(AppIcons.Delete, null) }, onClick = { menu = false; confirmDelete = true })
                 }
@@ -130,7 +137,7 @@ fun ProductionTabScreen(state: AppState, data: GameData, tab: ProductionTab, lin
     }
 
     if (renaming) {
-        var name by remember { mutableStateOf(tab.data.metadata.name ?: tab.name) }
+        var name by remember { mutableStateOf(tab.data.metadata.name ?: "") }
         AlertDialog(
             onDismissRequest = { renaming = false },
             title = { Text("Rename production line") },

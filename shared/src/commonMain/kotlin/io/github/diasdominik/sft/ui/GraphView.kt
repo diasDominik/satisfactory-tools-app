@@ -2,8 +2,11 @@ package io.github.diasdominik.sft.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,8 +39,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +57,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.roundToInt
 
 data class GraphViewNode(
     val id: Int,
@@ -66,6 +75,11 @@ private const val NODE_WIDTH = 190f
 private const val NODE_HEIGHT = 64f
 private const val H_GAP = 40f
 private const val V_GAP = 90f
+
+private const val MIN_SCALE = 0.1f
+private const val MAX_SCALE = 4f
+private const val BUTTON_ZOOM = 1.4f
+private const val WHEEL_ZOOM = 1.15f
 
 private class Layout(val positions: Map<Int, Offset>, val bounds: Rect)
 
@@ -159,12 +173,25 @@ fun GraphView(
         if (viewSize.width == 0) return
         val b = graphLayout.bounds
         val margin = 24f * density
-        val s = min(viewSize.width / (b.width + margin), viewSize.height / (b.height + margin)).coerceIn(0.25f, 1.5f)
+        val s = min(viewSize.width / (b.width + margin), viewSize.height / (b.height + margin)).coerceIn(MIN_SCALE, 1.5f)
         scale = s
         offset = Offset(
             (viewSize.width - b.width * s) / 2,
             max(margin / 2, (viewSize.height - b.height * s) / 2),
         )
+    }
+    /** Zooms by [factor] keeping the graph point under [pivot] in place. */
+    fun zoomBy(factor: Float, pivot: Offset) {
+        val newScale = (scale * factor).coerceIn(MIN_SCALE, MAX_SCALE)
+        val applied = newScale / scale
+        offset = pivot - (pivot - offset) * applied
+        scale = newScale
+    }
+    fun nodeAt(point: Offset): Int? {
+        val p = (point - offset) / scale
+        return graphLayout.positions.entries.firstOrNull { (_, pos) ->
+            p.x in pos.x..(pos.x + nodeWidth) && p.y in pos.y..(pos.y + nodeHeight)
+        }?.key
     }
     LaunchedEffect(graphLayout, viewSize) {
         if (!fitted && viewSize.width > 0) {
@@ -187,30 +214,60 @@ fun GraphView(
         ) {
             Canvas(
                 Modifier.fillMaxSize()
+                    .semantics {
+                        contentDescription = "Production graph"
+                        stateDescription = "Zoom ${(scale * 100).roundToInt()} %"
+                    }
                     .pointerInput(graphLayout) {
-                        detectTransformGestures { centroid, pan, zoom, _ ->
-                            val newScale = (scale * zoom).coerceIn(0.1f, 4f)
-                            val factor = newScale / scale
-                            offset = centroid - (centroid - offset) * factor + pan
-                            scale = newScale
+                        // One gesture handler for drag, pinch and taps. It consumes every touch inside the
+                        // graph so the surrounding list doesn't scroll away while panning or pinching.
+                        var lastTapTime = 0L
+                        var lastTapNode: Int? = null
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            var moved = 0f
+                            var multiTouch = false
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val pressed = event.changes.filter { it.pressed }
+                                if (pressed.isEmpty()) break
+                                if (pressed.size > 1) multiTouch = true
+                                val zoom = event.calculateZoom()
+                                val pan = event.calculatePan()
+                                moved += pan.getDistance()
+                                if (zoom != 1f) zoomBy(zoom, event.calculateCentroid(useCurrent = true))
+                                if (moved > viewConfiguration.touchSlop || multiTouch) offset += pan
+                                event.changes.forEach { it.consume() }
+                            }
+                            if (!multiTouch && moved <= viewConfiguration.touchSlop) {
+                                val hit = nodeAt(down.position)
+                                val now = down.uptimeMillis
+                                if (hit != null && hit == lastTapNode && now - lastTapTime < viewConfiguration.doubleTapTimeoutMillis) {
+                                    nodesById[hit]?.action?.second?.invoke()
+                                    lastTapNode = null
+                                } else {
+                                    selected = hit
+                                    lastTapNode = hit
+                                    lastTapTime = now
+                                }
+                            }
                         }
                     }
                     .pointerInput(graphLayout) {
-                        detectTapGestures(
-                            onTap = { tap ->
-                                val p = (tap - offset) / scale
-                                selected = graphLayout.positions.entries.firstOrNull { (_, pos) ->
-                                    p.x in pos.x..(pos.x + nodeWidth) && p.y in pos.y..(pos.y + nodeHeight)
-                                }?.key
-                            },
-                            onDoubleTap = { tap ->
-                                val p = (tap - offset) / scale
-                                val hit = graphLayout.positions.entries.firstOrNull { (_, pos) ->
-                                    p.x in pos.x..(pos.x + nodeWidth) && p.y in pos.y..(pos.y + nodeHeight)
-                                }?.key
-                                hit?.let { nodesById[it]?.action?.second?.invoke() }
-                            },
-                        )
+                        // Mouse wheel and trackpad scrolling zoom on desktop.
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.type != PointerEventType.Scroll) continue
+                                val change = event.changes.firstOrNull() ?: continue
+                                val delta = change.scrollDelta.y
+                                if (delta != 0f) {
+                                    zoomBy(WHEEL_ZOOM.pow(-delta), change.position)
+                                    change.consume()
+                                }
+                            }
+                        }
                     },
             ) {
                 withTransform({
@@ -278,8 +335,11 @@ fun GraphView(
                     }
                 }
             }
-            FilledTonalIconButton(onClick = { fit() }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-                Icon(AppIcons.Fit, contentDescription = "Fit graph")
+            Column(Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                val center = Offset(viewSize.width / 2f, viewSize.height / 2f)
+                FilledTonalIconButton(onClick = { zoomBy(BUTTON_ZOOM, center) }) { Icon(AppIcons.Add, contentDescription = "Zoom in") }
+                FilledTonalIconButton(onClick = { zoomBy(1 / BUTTON_ZOOM, center) }) { Icon(AppIcons.Remove, contentDescription = "Zoom out") }
+                FilledTonalIconButton(onClick = { fit() }) { Icon(AppIcons.Fit, contentDescription = "Fit graph") }
             }
         }
         val node = selected?.let { nodesById[it] }
@@ -299,7 +359,7 @@ fun GraphView(
             }
         } else {
             Text(
-                "Pinch to zoom, drag to move, tap a node for details.",
+                "Pinch, scroll or use + and − to zoom, drag to move, tap a node for details, double-tap to open it.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),

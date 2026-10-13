@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -43,6 +44,14 @@ data class ItemFilter(
     val stackSize: Int? = null,
     val liquid: Boolean? = null,
 ) {
+    companion object {
+        /** Keeps search and filters when an item is opened and closed again. */
+        val Saver = listSaver<ItemFilter, Any?>(
+            save = { listOf(it.query, it.onlyRadioactive, it.onlyWithEnergyValue, it.stackSize, it.liquid) },
+            restore = { ItemFilter(it[0] as String, it[1] as Boolean, it[2] as Boolean, it[3] as Int?, it[4] as Boolean?) },
+        )
+    }
+
     fun apply(items: Collection<Item>): List<Item> = items.filter { item ->
         (!onlyRadioactive || item.radioactiveDecay > 0) &&
             (!onlyWithEnergyValue || item.energyValue > 0) &&
@@ -57,7 +66,7 @@ private val stackSizes = listOf(1, 50, 100, 200, 500)
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ItemsScreen(data: GameData, onOpen: (String) -> Unit, actions: @Composable () -> Unit) {
-    var filter by remember { mutableStateOf(ItemFilter()) }
+    var filter by rememberSaveable(stateSaver = ItemFilter.Saver) { mutableStateOf(ItemFilter()) }
     var showFilters by rememberSaveable { mutableStateOf(false) }
     val items = remember(filter, data) { filter.apply(data.items.values) }
     Scaffold(topBar = {

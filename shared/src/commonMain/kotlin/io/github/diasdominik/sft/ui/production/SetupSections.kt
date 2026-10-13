@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +54,9 @@ import io.github.diasdominik.sft.ui.OptionalCountField
 import io.github.diasdominik.sft.ui.SearchField
 import io.github.diasdominik.sft.ui.fmt
 
-private fun <T> List<T>.replaceAt(index: Int, value: T) = toMutableList().also { it[index] = value }
+/** Updates the current element at [index] (not a copy captured when the row was drawn). */
+private fun <T> List<T>.updateAt(index: Int, transform: (T) -> T) =
+    if (index !in indices) this else toMutableList().also { it[index] = transform(it[index]) }
 private fun <T> List<T>.removeAt(index: Int) = toMutableList().also { it.removeAt(index) }
 private fun <T> List<T>.move(from: Int, to: Int) =
     if (to !in indices) this else toMutableList().also { it.add(to, it.removeAt(from)) }
@@ -109,7 +112,7 @@ internal fun LazyListScope.productsSection(data: GameData, tab: ProductionTab) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ItemButton(
                     data, product.item, data.automatableItems.map { it.className },
-                    onPick = { picked -> tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(item = picked))) } },
+                    onPick = { picked -> tab.updateRequest { r -> r.copy(production = r.production.updateAt(index) { it.copy(item = picked) }) } },
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production.move(index, index - 1)) } }, enabled = index > 0) {
@@ -123,26 +126,26 @@ internal fun LazyListScope.productsSection(data: GameData, tab: ProductionTab) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         product.type != ProductionType.MAXIMIZE,
-                        onClick = { tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(type = ProductionType.PER_MINUTE))) } },
+                        onClick = { tab.updateRequest { r -> r.copy(production = r.production.updateAt(index) { it.copy(type = ProductionType.PER_MINUTE) }) } },
                         label = { Text("Items/min") },
                     )
                     FilterChip(
                         product.type == ProductionType.MAXIMIZE,
-                        onClick = { tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(type = ProductionType.MAXIMIZE))) } },
+                        onClick = { tab.updateRequest { r -> r.copy(production = r.production.updateAt(index) { it.copy(type = ProductionType.MAXIMIZE) }) } },
                         label = { Text("Maximize") },
                     )
                 }
                 if (product.type == ProductionType.MAXIMIZE) {
                     NumberField(
                         product.ratio,
-                        { v -> tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(ratio = v))) } },
+                        { v -> tab.updateRequest { r -> r.copy(production = r.production.updateAt(index) { it.copy(ratio = v) }) } },
                         modifier = Modifier.fillMaxWidth(),
                         label = "Ratio",
                     )
                 } else {
                     NumberField(
                         product.amount,
-                        { v -> tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(amount = v))) } },
+                        { v -> tab.updateRequest { r -> r.copy(production = r.production.updateAt(index) { it.copy(amount = v) }) } },
                         modifier = Modifier.fillMaxWidth(),
                         label = "Amount",
                         suffix = if (data.item(product.item)?.liquid == true) "m³/min" else "/min",
@@ -244,7 +247,7 @@ private fun ExtractionSettings(data: GameData, tab: ProductionTab, resource: Str
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             NumberField(
                 settings.clockSpeed,
-                { v -> tab.updateExtraction(data, resource) { it.copy(clockSpeed = v.coerceIn(Extraction.MIN_CLOCK, Extraction.MAX_CLOCK)) } },
+                { v -> if (v > 0) tab.updateExtraction(data, resource) { it.copy(clockSpeed = v.coerceIn(Extraction.MIN_CLOCK, Extraction.MAX_CLOCK)) } },
                 modifier = Modifier.weight(1f),
                 label = "Clock speed",
                 suffix = "%",
@@ -305,12 +308,12 @@ internal fun LazyListScope.inputsSection(data: GameData, tab: ProductionTab) {
         RowCard {
             ItemButton(
                 data, input.item, data.inputableItems.map { it.className },
-                onPick = { picked -> tab.updateRequest { r -> r.copy(input = r.input.replaceAt(index, input.copy(item = picked))) } },
+                onPick = { picked -> tab.updateRequest { r -> r.copy(input = r.input.updateAt(index) { it.copy(item = picked) }) } },
             )
             if (input.item != null) {
                 NumberField(
                     input.amount,
-                    { v -> tab.updateRequest { r -> r.copy(input = r.input.replaceAt(index, input.copy(amount = v))) } },
+                    { v -> tab.updateRequest { r -> r.copy(input = r.input.updateAt(index) { it.copy(amount = v) }) } },
                     modifier = Modifier.fillMaxWidth(),
                     label = "Amount",
                     suffix = "/min",
@@ -367,7 +370,7 @@ internal fun LazyListScope.recipeToggleSection(data: GameData, tab: ProductionTa
 
 @Composable
 private fun RecipeToggleList(data: GameData, tab: ProductionTab, recipes: List<Recipe>, alternates: Boolean) {
-    var query by remember(alternates) { mutableStateOf("") }
+    var query by rememberSaveable(alternates) { mutableStateOf("") }
     val request = tab.request
     val filtered = remember(query, recipes) {
         recipes.filter { r ->
@@ -390,7 +393,8 @@ private fun RecipeToggleList(data: GameData, tab: ProductionTab, recipes: List<R
             Row(
                 Modifier.fillMaxWidth()
                     .alpha(if (machineDisabled) 0.5f else 1f)
-                    .clickable {
+                    // A recipe whose building is turned off can't be toggled until the building is back on.
+                    .clickable(enabled = !machineDisabled) {
                         tab.updateRequest { r ->
                             if (alternates) r.copy(allowedAlternateRecipes = r.allowedAlternateRecipes.toggle(recipe.className))
                             else r.copy(blockedRecipes = r.blockedRecipes.toggle(recipe.className))

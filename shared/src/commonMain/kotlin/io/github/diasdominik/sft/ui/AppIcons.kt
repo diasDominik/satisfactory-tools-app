@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 object AppIcons {
     // Actions
     val Add by lazy { icon("Add", "M12 5v14M5 12h14") }
+    val Remove by lazy { icon("Remove", "M5 12h14") }
     val Close by lazy { icon("Close", "M6 6l12 12M18 6L6 18") }
     val Search by lazy { icon("Search", "M10.5 4a6.5 6.5 0 1 0 0 13a6.5 6.5 0 1 0 0-13zM15.5 15.5L20 20") }
     val Share by lazy {

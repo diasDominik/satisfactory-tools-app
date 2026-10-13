@@ -182,13 +182,13 @@ class AppState(private val settings: SettingsStore) : ViewModel() {
     private fun watch(tab: ProductionTab, data: GameData) {
         val solver = ProductionSolver(data)
         tab.job = scope.launch {
+            // Save every change right away; renaming or a new icon doesn't need a new plan.
+            launch { snapshotFlow { tab.data }.drop(1).collect { save() } }
             var first = true
-            snapshotFlow { tab.data }
+            snapshotFlow { tab.data.request }
                 .debounce { if (first) 0L else 350L }
-                .collectLatest { production ->
-                    if (!first) save()
+                .collectLatest { request ->
                     first = false
-                    val request = production.request
                     if (request.production.none { it.item != null && (it.amount > 0 || it.type == ProductionType.MAXIMIZE) }) {
                         tab.status = ResultStatus.NO_INPUT
                         tab.result = null
