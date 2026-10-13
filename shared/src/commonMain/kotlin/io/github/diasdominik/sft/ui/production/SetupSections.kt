@@ -1,0 +1,348 @@
+package io.github.diasdominik.sft.ui.production
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import io.github.diasdominik.sft.data.Constants
+import io.github.diasdominik.sft.data.GameData
+import io.github.diasdominik.sft.data.Recipe
+import io.github.diasdominik.sft.planner.InputItem
+import io.github.diasdominik.sft.planner.ProductionItem
+import io.github.diasdominik.sft.planner.ProductionType
+import io.github.diasdominik.sft.state.ProductionTab
+import io.github.diasdominik.sft.ui.EntityIcon
+import io.github.diasdominik.sft.ui.EntityPickerDialog
+import io.github.diasdominik.sft.ui.NumberField
+import io.github.diasdominik.sft.ui.SearchField
+import io.github.diasdominik.sft.ui.fmt
+
+private fun <T> List<T>.replaceAt(index: Int, value: T) = toMutableList().also { it[index] = value }
+private fun <T> List<T>.removeAt(index: Int) = toMutableList().also { it.removeAt(index) }
+private fun <T> List<T>.move(from: Int, to: Int) =
+    if (to !in indices) this else toMutableList().also { it.add(to, it.removeAt(from)) }
+private fun List<String>.toggle(value: String) = if (value in this) this - value else this + value
+
+@Composable
+private fun Hint(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun ItemButton(data: GameData, className: String?, options: List<String>, onPick: (String) -> Unit, modifier: Modifier = Modifier) {
+    var picking by remember { mutableStateOf(false) }
+    Row(
+        modifier.clickable { picking = true }.padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        EntityIcon(data, className, 36.dp)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            className?.let { data.nameOf(it) } ?: "Select item…",
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (className == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    if (picking) {
+        EntityPickerDialog(data, "Select item", options, onDismiss = { picking = false }) {
+            onPick(it)
+            picking = false
+        }
+    }
+}
+
+@Composable
+private fun RowCard(content: @Composable () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) { content() }
+    }
+}
+
+internal fun LazyListScope.productsSection(data: GameData, tab: ProductionTab) {
+    item {
+        Hint(
+            "Select items to produce. \"Items/min\" produces the given amount from as few raw resources as possible; " +
+                "\"Maximize\" produces as much as the raw resource limits allow (several maximized items share the output by their ratio).",
+        )
+    }
+    val products = tab.request.production
+    itemsIndexed(products, key = { index, _ -> "p$index" }) { index, product ->
+        RowCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ItemButton(
+                    data, product.item, data.automatableItems.map { it.className },
+                    onPick = { picked -> tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(item = picked))) } },
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production.move(index, index - 1)) } }, enabled = index > 0) {
+                    Icon(Icons.Default.ArrowUpward, contentDescription = "Move up")
+                }
+                IconButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production.move(index, index + 1)) } }, enabled = index < products.lastIndex) {
+                    Icon(Icons.Default.ArrowDownward, contentDescription = "Move down")
+                }
+            }
+            if (product.item != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        product.type != ProductionType.MAXIMIZE,
+                        onClick = { tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(type = ProductionType.PER_MINUTE))) } },
+                        label = { Text("Items/min") },
+                    )
+                    FilterChip(
+                        product.type == ProductionType.MAXIMIZE,
+                        onClick = { tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(type = ProductionType.MAXIMIZE))) } },
+                        label = { Text("Maximize") },
+                    )
+                }
+                if (product.type == ProductionType.MAXIMIZE) {
+                    NumberField(
+                        product.ratio,
+                        { v -> tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(ratio = v))) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = "Ratio",
+                    )
+                } else {
+                    NumberField(
+                        product.amount,
+                        { v -> tab.updateRequest { r -> r.copy(production = r.production.replaceAt(index, product.copy(amount = v))) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = "Amount",
+                        suffix = if (data.item(product.item)?.liquid == true) "m³/min" else "/min",
+                    )
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production + product.copy()) } }) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Clone")
+                }
+                TextButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production.removeAt(index)) } }) {
+                    Icon(Icons.Default.Close, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Remove")
+                }
+            }
+        }
+    }
+    item {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production + ProductionItem()) } }) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("Add product")
+            }
+            TextButton(onClick = { tab.updateRequest { r -> r.copy(production = listOf(ProductionItem())) } }) { Text("Clear") }
+        }
+    }
+}
+
+internal fun LazyListScope.resourcesSection(data: GameData, tab: ProductionTab) {
+    item {
+        Hint("Select which raw resources may be used and their limits. Defaults are the map limits.")
+    }
+    item {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { tab.updateRequest { r -> r.copy(resourceMax = Constants.RESOURCE_AMOUNTS) } }) { Text("Set from map limits") }
+            OutlinedButton(onClick = { tab.updateRequest { r -> r.copy(resourceMax = r.resourceMax.mapValues { 0.0 }) } }) { Text("Set to 0") }
+        }
+    }
+    items(data.resourceList, key = { "r" + it.item }) { resource ->
+        val enabled = resource.item !in tab.request.blockedResources
+        val max = tab.request.resourceMax[resource.item] ?: 0.0
+        RowCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(enabled, onCheckedChange = { tab.updateRequest { r -> r.copy(blockedResources = r.blockedResources.toggle(resource.item)) } })
+                EntityIcon(data, resource.item, 28.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(data.nameOf(resource.item), modifier = Modifier.weight(1f))
+            }
+            if (resource.item == Constants.WATER && max >= 1e12) {
+                Text("Unlimited", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 48.dp, bottom = 4.dp))
+            } else {
+                NumberField(
+                    max,
+                    { v -> tab.updateRequest { r -> r.copy(resourceMax = r.resourceMax + (resource.item to v)) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "Limit",
+                    enabled = enabled,
+                    suffix = "/min",
+                )
+            }
+        }
+    }
+}
+
+internal fun LazyListScope.inputsSection(data: GameData, tab: ProductionTab) {
+    item { Hint("Items you already have at your disposal, so this factory doesn't need to produce them.") }
+    val inputs = tab.request.input
+    itemsIndexed(inputs, key = { index, _ -> "i$index" }) { index, input ->
+        RowCard {
+            ItemButton(
+                data, input.item, data.inputableItems.map { it.className },
+                onPick = { picked -> tab.updateRequest { r -> r.copy(input = r.input.replaceAt(index, input.copy(item = picked))) } },
+            )
+            if (input.item != null) {
+                NumberField(
+                    input.amount,
+                    { v -> tab.updateRequest { r -> r.copy(input = r.input.replaceAt(index, input.copy(amount = v))) } },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "Amount",
+                    suffix = "/min",
+                )
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input + input.copy()) } }) { Text("Clone") }
+                TextButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input.removeAt(index)) } }) { Text("Remove") }
+            }
+        }
+    }
+    item {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input + InputItem()) } }) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("Add input")
+            }
+            if (inputs.isNotEmpty()) TextButton(onClick = { tab.updateRequest { r -> r.copy(input = emptyList()) } }) { Text("Clear") }
+        }
+    }
+}
+
+private fun recipeMachineDisabled(recipe: Recipe, blocked: List<String>) = recipe.producedIn.any { it in blocked }
+
+internal fun LazyListScope.recipeToggleSection(data: GameData, tab: ProductionTab, alternates: Boolean) {
+    val recipes = if (alternates) data.alternateRecipes else data.baseRecipes
+    item(key = "hint-$alternates") {
+        Hint(
+            if (alternates) "Alternate recipes the planner may use (enabling one doesn't force it to be used)."
+            else "Basic recipes the planner may use. Disable the ones you don't want.",
+        )
+    }
+    item(key = "buttons-$alternates") {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                tab.updateRequest { r ->
+                    if (alternates) r.copy(allowedAlternateRecipes = data.alternateRecipes.map { it.className })
+                    else r.copy(blockedRecipes = emptyList())
+                }
+            }) { Text("Enable all") }
+            OutlinedButton(onClick = {
+                tab.updateRequest { r ->
+                    if (alternates) r.copy(allowedAlternateRecipes = emptyList())
+                    else r.copy(blockedRecipes = data.baseRecipes.map { it.className })
+                }
+            }) { Text("Disable all") }
+        }
+    }
+    item(key = "list-$alternates") {
+        RecipeToggleList(data, tab, recipes, alternates)
+    }
+}
+
+@Composable
+private fun RecipeToggleList(data: GameData, tab: ProductionTab, recipes: List<Recipe>, alternates: Boolean) {
+    var query by remember(alternates) { mutableStateOf("") }
+    val request = tab.request
+    val filtered = remember(query, recipes) {
+        recipes.filter { r ->
+            query.isEmpty() || r.name.contains(query, ignoreCase = true) ||
+                r.products.any { data.nameOf(it.item).contains(query, ignoreCase = true) }
+        }
+    }
+    val enabledCount = if (alternates) request.allowedAlternateRecipes.size else recipes.size - request.blockedRecipes.count { b -> recipes.any { it.className == b } }
+    Column {
+        SearchField(query, { query = it }, "Search recipes")
+        Text(
+            "$enabledCount of ${recipes.size} enabled",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 6.dp),
+        )
+        filtered.forEach { recipe ->
+            val machineDisabled = recipeMachineDisabled(recipe, request.blockedMachines)
+            val checked = if (alternates) recipe.className in request.allowedAlternateRecipes else recipe.className !in request.blockedRecipes
+            Row(
+                Modifier.fillMaxWidth()
+                    .alpha(if (machineDisabled) 0.5f else 1f)
+                    .clickable {
+                        tab.updateRequest { r ->
+                            if (alternates) r.copy(allowedAlternateRecipes = r.allowedAlternateRecipes.toggle(recipe.className))
+                            else r.copy(blockedRecipes = r.blockedRecipes.toggle(recipe.className))
+                        }
+                    }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked && !machineDisabled, onCheckedChange = null)
+                EntityIcon(data, recipe.products.firstOrNull()?.item, 28.dp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(recipe.name.removePrefix("Alternate: "), style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        recipe.ingredients.joinToString(" + ") { "${fmt(it.amount)} ${data.nameOf(it.item)}" } + " → " +
+                            recipe.products.joinToString(" + ") { "${fmt(it.amount)} ${data.nameOf(it.item)}" } +
+                            (if (machineDisabled) "\nDisabled because its building is disabled." else ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            HorizontalDivider()
+        }
+    }
+}
+
+internal fun LazyListScope.machinesSection(data: GameData, tab: ProductionTab) {
+    item { Hint("Disable buildings you can't or don't want to use. Their recipes are then excluded too.") }
+    items(data.manufacturers, key = { "m" + it.className }) { machine ->
+        val enabled = machine.className !in tab.request.blockedMachines
+        Row(
+            Modifier.fillMaxWidth()
+                .clickable { tab.updateRequest { r -> r.copy(blockedMachines = r.blockedMachines.toggle(machine.className)) } }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(enabled, onCheckedChange = null)
+            EntityIcon(data, machine.className, 32.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(machine.name, modifier = Modifier.weight(1f))
+        }
+    }
+}

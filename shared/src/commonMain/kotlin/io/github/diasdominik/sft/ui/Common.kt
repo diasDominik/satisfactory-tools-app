@@ -1,0 +1,286 @@
+package io.github.diasdominik.sft.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.github.diasdominik.sft.data.GameData
+import io.github.diasdominik.sft.data.ItemAmount
+import io.github.diasdominik.sft.planner.Numbers
+
+fun fmt(value: Double, decimals: Int = 3) = Numbers.format(value, decimals)
+
+private val iconPalette = listOf(
+    Color(0xFFB85C1E), Color(0xFF3F7CAC), Color(0xFF5C8A3A), Color(0xFF8A4F9E), Color(0xFF9E7A2F),
+    Color(0xFF2F8A86), Color(0xFFA0434E), Color(0xFF5D6B7A), Color(0xFF7A5C3A), Color(0xFF4A5DA8),
+)
+
+/**
+ * Placeholder icon. The game's icons are Coffee Stain's and may not be redistributed by
+ * derivative works, so entities are drawn as a coloured tile with their initials.
+ */
+@Composable
+fun EntityIcon(data: GameData?, className: String?, size: Dp = 32.dp, modifier: Modifier = Modifier) {
+    val name = className?.let { data?.nameOf(it) } ?: "?"
+    val item = className?.let { data?.item(it) }
+    val color = when {
+        item != null && item.liquid && item.fluidColor.let { it.r + it.g + it.b } > 0 ->
+            Color(item.fluidColor.r, item.fluidColor.g, item.fluidColor.b)
+        className == null -> MaterialTheme.colorScheme.surfaceVariant
+        else -> iconPalette[(className.hashCode() and 0x7fffffff) % iconPalette.size]
+    }
+    val initials = initialsOf(name)
+    val textColor = if (color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f > 0.6f) Color.Black else Color.White
+    val isBuilding = className != null && data?.building(className) != null && item == null
+    Box(
+        modifier
+            .size(size)
+            .clip(if (item?.liquid == true) RoundedCornerShape(50) else RoundedCornerShape(size / 5))
+            .background(color)
+            .then(if (isBuilding) Modifier.border(2.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(size / 5)) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            initials,
+            color = textColor,
+            fontSize = (size.value * 0.36f).sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+    }
+}
+
+private fun initialsOf(name: String): String {
+    val words = name.replace(Regex("[^A-Za-z0-9 ]"), " ").split(' ').filter { it.isNotBlank() }
+    return when {
+        words.isEmpty() -> "?"
+        words.size == 1 -> words[0].take(2)
+        else -> words.take(2).joinToString("") { it.take(1) }
+    }.uppercase()
+}
+
+@Composable
+fun SectionCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    actions: @Composable () -> Unit = {},
+    content: @Composable () -> Unit,
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            actions()
+        }
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+fun KeyValueRow(label: String, value: String, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End)
+    }
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+}
+
+@Composable
+fun EntityRow(
+    data: GameData?,
+    className: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    trailing: @Composable () -> Unit = {},
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        modifier.fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        EntityIcon(data, className, 32.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(data?.nameOf(className) ?: className, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        trailing()
+    }
+}
+
+/** "12x [icon] Iron Plate" chip used for recipe ingredients, costs and products. */
+@Composable
+fun AmountChip(
+    data: GameData?,
+    amount: ItemAmount,
+    perMinute: Double? = null,
+    onClick: ((String) -> Unit)? = null,
+) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .then(if (onClick != null) Modifier.clickable { onClick(amount.item) } else Modifier)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(fmt(amount.amount) + "×", style = MaterialTheme.typography.labelLarge)
+        Spacer(Modifier.width(6.dp))
+        EntityIcon(data, amount.item, 22.dp)
+        Spacer(Modifier.width(6.dp))
+        Column {
+            Text(data?.nameOf(amount.item) ?: amount.item, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (perMinute != null) {
+                Text(fmt(perMinute) + " / min", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AmountChips(data: GameData?, amounts: List<ItemAmount>, perMinute: ((ItemAmount) -> Double?)? = null, onClick: ((String) -> Unit)? = null) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        amounts.forEach { AmountChip(data, it, perMinute?.invoke(it), onClick) }
+    }
+}
+
+@Composable
+fun SearchField(query: String, onQueryChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = modifier.fillMaxWidth(),
+        singleLine = true,
+        placeholder = { Text(placeholder) },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) IconButton(onClick = { onQueryChange("") }) { Icon(Icons.Default.Clear, contentDescription = "Clear") }
+        },
+    )
+}
+
+/** Numeric text field that keeps the user's partial input (e.g. "1.") while typing. */
+@Composable
+fun NumberField(
+    value: Double,
+    onValueChange: (Double) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    enabled: Boolean = true,
+    suffix: String? = null,
+) {
+    var text by remember { mutableStateOf(plain(value)) }
+    // Resync when the value changes from outside (e.g. "Set to 0"), but not while it matches what is typed.
+    LaunchedEffect(value) {
+        val typed = text.replace(",", ".").toDoubleOrNull() ?: 0.0
+        if (kotlin.math.abs(typed - value) > 1e-9) text = plain(value)
+    }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { new ->
+            val cleaned = new.filter { it.isDigit() || it == '.' || it == ',' }
+            text = cleaned
+            val number = if (cleaned.isEmpty()) 0.0 else cleaned.replace(",", ".").toDoubleOrNull()
+            if (number != null) onValueChange(number)
+        },
+        modifier = modifier,
+        enabled = enabled,
+        singleLine = true,
+        label = label?.let { { Text(it) } },
+        suffix = suffix?.let { { Text(it) } },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+    )
+}
+
+private fun plain(value: Double) = Numbers.format(value, 6).replace(",", "")
+
+/** Searchable picker dialog for items (or any class names with names in [data]). */
+@Composable
+fun EntityPickerDialog(
+    data: GameData,
+    title: String,
+    options: List<String>,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    val filtered = remember(query, options) {
+        options.filter { data.nameOf(it).contains(query, ignoreCase = true) }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                SearchField(query, { query = it }, "Search")
+                Spacer(Modifier.size(8.dp))
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(filtered, key = { it }) { className ->
+                        EntityRow(data, className, onClick = { onPick(className) })
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+fun EmptyState(text: String, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    }
+}
