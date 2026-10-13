@@ -11,6 +11,7 @@ import io.github.diasdominik.sft.planner.ProductionItem
 import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionResult
 import io.github.diasdominik.sft.planner.ProductionSolver
+import io.github.diasdominik.sft.planner.ProductionType
 import io.github.diasdominik.sft.planner.ResourceExtraction
 import io.github.diasdominik.sft.planner.SftFormat
 import java.io.File
@@ -130,5 +131,24 @@ class ExtractionTest {
         const val MK1 = "Desc_MinerMk1_C"
         const val MK2 = "Desc_MinerMk2_C"
         const val MK3 = "Desc_MinerMk3_C"
+    }
+
+    @Test
+    fun nodeCountIsAllYouGetWhenMaximizing() {
+        fun maximize(miner: String, purity: Purity): ProductionResult {
+            val request = ProductionRequest(
+                production = listOf(ProductionItem("Desc_IronRod_C", type = ProductionType.MAXIMIZE)),
+                extraction = mapOf("Desc_OreIron_C" to ResourceExtraction(miner, purity, nodes = 6)),
+            )
+            return ProductionResult(request, ProductionGraph.from(solver.solve(request)!!), data)
+        }
+        // Every node gets a miner, and the output follows what those miners deliver: no Iron Ore
+        // is made from other resources in a Converter.
+        val mk3 = maximize("Desc_MinerMk3_C", Purity.PURE)
+        assertEquals(6, mk3.extraction.single().count)
+        assertEquals(6 * 480.0, mk3.output.getValue("Desc_IronRod_C"), 1e-4)
+        val mk1 = maximize("Desc_MinerMk1_C", Purity.IMPURE)
+        assertEquals(6, mk1.extraction.single().count)
+        assertEquals(6 * 30.0, mk1.output.getValue("Desc_IronRod_C"), 1e-4)
     }
 }

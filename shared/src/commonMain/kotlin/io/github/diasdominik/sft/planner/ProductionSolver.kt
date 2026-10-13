@@ -153,7 +153,11 @@ class ProductionSolver(private val data: GameData) {
         val blockedMachines = request.blockedMachines.toSet()
         val blockedRecipes = request.blockedRecipes.toSet()
         val allowedAlternates = request.allowedAlternateRecipes.toSet()
+        // A resource with a node count comes only from those nodes, not from Converter recipes that
+        // turn other resources into it; otherwise the plan quietly works around the nodes you have.
+        val fromNodesOnly = request.extraction.filterValues { it.nodes != null }.keys
         return data.recipes.values.filter { recipe ->
+            if (recipe.products.any { it.item in fromNodesOnly }) return@filter false
             if (!recipe.inMachine) return@filter false
             val machine = data.machineFor(recipe) ?: return@filter false
             if (recipe.time <= 0) return@filter false

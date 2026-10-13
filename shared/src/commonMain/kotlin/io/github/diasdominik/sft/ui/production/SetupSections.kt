@@ -189,7 +189,8 @@ internal fun LazyListScope.resourcesSection(data: GameData, tab: ProductionTab) 
         Hint(
             "Select which raw resources may be used and their limits. Defaults are the map limits. " +
                 "Pick the extractor, node purity and clock speed you have to see how many extractors you need, " +
-                "and enter how many nodes you can use to limit a resource to what they deliver.",
+                "and enter how many nodes you can use to limit a resource to what they deliver " +
+                "(it then isn't made from other resources in a Converter either). With Maximize, every node gets an extractor.",
         )
     }
     item {
