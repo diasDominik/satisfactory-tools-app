@@ -64,16 +64,16 @@ class ProductionSolver(private val data: GameData) {
         for ((recipe, variable) in recipeVar) {
             val machine = data.machineFor(recipe)!!
             val perMinuteFactor = 60.0 / recipe.time * machine.metadata.manufacturingSpeed
-            for (p in recipe.products) coef(p.item).merge(variable, p.amount * perMinuteFactor, Double::plus)
-            for (i in recipe.ingredients) coef(i.item).merge(variable, -i.amount * perMinuteFactor, Double::plus)
+            for (p in recipe.products) coef(p.item).mergeWith(variable, p.amount * perMinuteFactor) { a, b -> a + b }
+            for (i in recipe.ingredients) coef(i.item).mergeWith(variable, -i.amount * perMinuteFactor) { a, b -> a + b }
         }
         for ((resource, variable) in resourceVar) coef(resource)[variable] = 1.0
         for ((item, variable) in inputVar) coef(item)[variable] = 1.0
 
         val demand = HashMap<String, Double>()
-        for (p in perMinute) demand.merge(p.item!!, p.amount, Double::plus)
+        for (p in perMinute) demand.mergeWith(p.item!!, p.amount) { a, b -> a + b }
         val maxRatio = HashMap<String, Double>()
-        for (p in maximize) maxRatio.merge(p.item!!, p.ratio / 100.0, Double::plus)
+        for (p in maximize) maxRatio.mergeWith(p.item!!, p.ratio / 100.0) { a, b -> a + b }
         for (item in demand.keys + maxRatio.keys) coef(item)
 
         val byproductVar = itemCoefficients.keys.associateWith { next++ }
@@ -136,7 +136,7 @@ class ProductionSolver(private val data: GameData) {
         val inputs = inputVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
         val productAmounts = LinkedHashMap<String, Double>()
         for ((item, amount) in demand) productAmounts[item] = amount
-        for ((item, ratio) in maxRatio) productAmounts.merge(item, ratio * scale, Double::plus)
+        for ((item, ratio) in maxRatio) productAmounts.mergeWith(item, ratio * scale) { a, b -> a + b }
         val byproducts = byproductVar.mapValues { clean(solution[it.value]) }.filterValues { it > 1e-6 }
 
         return SolverOutput(usages, mined, inputs, productAmounts, byproducts)

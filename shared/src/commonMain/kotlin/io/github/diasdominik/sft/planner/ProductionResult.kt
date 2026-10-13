@@ -188,7 +188,7 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
 
     private inline fun <reified T : GraphNode> sumNodes(pair: (T) -> Pair<String, Double>): Map<String, Double> {
         val result = LinkedHashMap<String, Double>()
-        graph.nodes.filterIsInstance<T>().forEach { val (k, v) = pair(it); result.merge(k, v, Double::plus) }
+        graph.nodes.filterIsInstance<T>().forEach { val (k, v) = pair(it); result.mergeWith(k, v) { a, b -> a + b } }
         return result
     }
 
@@ -198,7 +198,7 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
         for (node in graph.nodes.filterIsInstance<RecipeNode>()) {
             val building = node.usage.machine.className
             val amount = ceil(node.usage.amount - 1e-9).toInt()
-            counts.merge(building, amount, Int::plus)
+            counts.mergeWith(building, amount) { a, b -> a + b }
             recipesByBuilding.getOrPut(building) { LinkedHashMap() }[node.usage.recipe.className] =
                 RecipeBuildingDetails(amount, buildingCost(building, amount))
         }
@@ -215,7 +215,7 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
 
     private fun sumCosts(costs: List<Map<String, Double>>): Map<String, Double> {
         val result = LinkedHashMap<String, Double>()
-        costs.forEach { c -> c.forEach { (k, v) -> result.merge(k, v, Double::plus) } }
+        costs.forEach { c -> c.forEach { (k, v) -> result.mergeWith(k, v) { a, b -> a + b } } }
         return result
     }
 
@@ -237,21 +237,21 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
                 } else if (edge.from === node) {
                     val to = edge.to
                     if (to is RecipeNode) {
-                        acc.consumers.merge(to.usage.recipe.className, FlowSource.RECIPE to amount) { a, b -> a.first to a.second + b.second }
+                        acc.consumers.mergeWith(to.usage.recipe.className, FlowSource.RECIPE to amount) { a, b -> a.first to a.second + b.second }
                         acc.consumed += amount
                     }
                 } else {
                     when (val from = edge.from) {
                         is RecipeNode -> {
-                            acc.producers.merge(from.usage.recipe.className, FlowSource.RECIPE to amount) { a, b -> a.first to a.second + b.second }
+                            acc.producers.mergeWith(from.usage.recipe.className, FlowSource.RECIPE to amount) { a, b -> a.first to a.second + b.second }
                             acc.produced += amount
                         }
                         is MinerNode -> {
-                            acc.producers.merge(from.item, FlowSource.MINER to amount) { a, b -> a.first to a.second + b.second }
+                            acc.producers.mergeWith(from.item, FlowSource.MINER to amount) { a, b -> a.first to a.second + b.second }
                             acc.produced += amount
                         }
                         is InputNode -> {
-                            acc.producers.merge(from.item, FlowSource.INPUT to amount) { a, b -> a.first to a.second + b.second }
+                            acc.producers.mergeWith(from.item, FlowSource.INPUT to amount) { a, b -> a.first to a.second + b.second }
                         }
                         else -> {}
                     }
@@ -273,15 +273,15 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
         val max = LinkedHashMap<String, Double>()
         for (input in request.input) {
             val item = input.item ?: continue
-            if (input.amount > 0 && data.item(item) != null) max.merge(item, input.amount, Double::plus)
+            if (input.amount > 0 && data.item(item) != null) max.mergeWith(item, input.amount) { a, b -> a + b }
         }
         val used = HashMap<String, Double>()
         val extra = HashMap<String, Double>()
         for (node in graph.nodes) {
             when (node) {
-                is InputNode -> used.merge(node.item, node.amount, Double::plus)
-                is RecipeNode -> node.outputs.forEach { if (it.item in max) extra.merge(it.item, it.maxAmount, Double::plus) }
-                is MinerNode -> if (node.item in max) extra.merge(node.item, node.amount, Double::plus)
+                is InputNode -> used.mergeWith(node.item, node.amount) { a, b -> a + b }
+                is RecipeNode -> node.outputs.forEach { if (it.item in max) extra.mergeWith(it.item, it.maxAmount) { a, b -> a + b } }
+                is MinerNode -> if (node.item in max) extra.mergeWith(node.item, node.amount) { a, b -> a + b }
                 else -> {}
             }
         }
@@ -293,7 +293,7 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
 
     private fun calculateRawResources(request: ProductionRequest): Map<String, RawResourceDetails> {
         val used = HashMap<String, Double>()
-        graph.nodes.filterIsInstance<MinerNode>().forEach { used.merge(it.item, it.amount, Double::plus) }
+        graph.nodes.filterIsInstance<MinerNode>().forEach { used.mergeWith(it.item, it.amount) { a, b -> a + b } }
         return data.resourceList.associate { resource ->
             val max = request.resourceMax[resource.item] ?: 0.0
             val u = Numbers.round(used[resource.item] ?: 0.0)

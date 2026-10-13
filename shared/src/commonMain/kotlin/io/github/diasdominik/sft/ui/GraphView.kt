@@ -105,7 +105,7 @@ private fun layout(nodes: List<GraphViewNode>, edges: List<GraphViewEdge>): Layo
     fun layerOf(n: Int): Int = layer[n] ?: (incoming.getValue(n).maxOfOrNull { layerOf(it) + 1 } ?: 0).also { layer[n] = it }
     ids.forEach { layerOf(it) }
 
-    val layers = ids.groupBy { layer.getValue(it) }.toSortedMap().values.map { it.toMutableList() }
+    val layers = ids.groupBy { layer.getValue(it) }.entries.sortedBy { it.key }.map { it.value.toMutableList() }
     val order = HashMap<Int, Double>()
     fun reindex() = layers.forEach { l -> l.forEachIndexed { i, n -> order[n] = i.toDouble() } }
     reindex()
