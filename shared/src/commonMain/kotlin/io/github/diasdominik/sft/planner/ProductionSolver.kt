@@ -17,7 +17,16 @@ data class SolverOutput(
  * [amount] is the throughput in machines running at 100 % (may be fractional); [clockSpeed] is what
  * the machines actually run at, so the real machine count is amount × 100 / clockSpeed.
  */
-data class RecipeUsage(val recipe: Recipe, val machine: Building, val amount: Double, val clockSpeed: Double = 100.0)
+data class RecipeUsage(
+    val recipe: Recipe,
+    val machine: Building,
+    val amount: Double,
+    val clockSpeed: Double = 100.0,
+    /** Every Somersloop slot filled: twice the output for the same input, at four times the power. */
+    val amplified: Boolean = false,
+) {
+    val outputFactor: Double get() = if (amplified) Somersloop.OUTPUT_FACTOR else 1.0
+}
 
 /**
  * Replaces the upstream server-side solver (api.satisfactorytools.com/v2/solver) with an
@@ -68,7 +77,8 @@ class ProductionSolver(private val data: GameData) {
         for ((recipe, variable) in recipeVar) {
             val machine = data.machineFor(recipe)!!
             val perMinuteFactor = 60.0 / recipe.time * machine.metadata.manufacturingSpeed
-            for (p in recipe.products) coef(p.item).mergeWith(variable, p.amount * perMinuteFactor) { a, b -> a + b }
+            val boost = if (request.isAmplified(recipe.className, machine.className)) Somersloop.OUTPUT_FACTOR else 1.0
+            for (p in recipe.products) coef(p.item).mergeWith(variable, p.amount * perMinuteFactor * boost) { a, b -> a + b }
             for (i in recipe.ingredients) coef(i.item).mergeWith(variable, -i.amount * perMinuteFactor) { a, b -> a + b }
         }
         for ((resource, variable) in resourceVar) coef(resource)[variable] = 1.0
@@ -135,7 +145,8 @@ class ProductionSolver(private val data: GameData) {
         val usages = recipeVar.mapNotNull { (recipe, variable) ->
             val amount = clean(solution[variable])
             val machine = data.machineFor(recipe)!!
-            if (amount > 0) RecipeUsage(recipe, machine, amount, request.clockSpeedFor(machine.className)) else null
+            if (amount <= 0) return@mapNotNull null
+            RecipeUsage(recipe, machine, amount, request.clockSpeedFor(machine.className), request.isAmplified(recipe.className, machine.className))
         }
         val mined = resourceVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
         val inputs = inputVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }

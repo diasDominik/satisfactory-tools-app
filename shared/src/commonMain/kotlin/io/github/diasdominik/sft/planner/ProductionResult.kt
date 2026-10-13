@@ -22,7 +22,10 @@ sealed class GraphNode {
 class RecipeNode(val usage: RecipeUsage) : GraphNode() {
     private val multiplier = usage.amount * usage.machine.metadata.manufacturingSpeed * (60.0 / usage.recipe.time)
     override val inputs = usage.recipe.ingredients.map { ResourceAmount(it.item, it.amount * multiplier, 0.0) }
-    override val outputs = usage.recipe.products.map { ResourceAmount(it.item, it.amount * multiplier, it.amount * multiplier) }
+    override val outputs = usage.recipe.products.map {
+        val amount = it.amount * multiplier * usage.outputFactor
+        ResourceAmount(it.item, amount, amount)
+    }
     val machines = MachineGroup(usage)
 }
 
@@ -140,9 +143,13 @@ class MachineGroup(private val usage: RecipeUsage) {
 
     val count: Int get() = machines.sumOf { it.amount }
 
+    /** Somersloops slotted into these machines. */
+    val somersloops: Int get() = if (usage.amplified) count * Somersloop.slots(usage.machine.className) else 0
+
     private fun machine(amount: Int, clockSpeed: Double): MachineGroupItem {
         val metadata = usage.machine.metadata
-        val clockFactor = (clockSpeed / 100).pow(metadata.powerConsumptionExponent)
+        val clockFactor = (clockSpeed / 100).pow(metadata.powerConsumptionExponent) *
+            (if (usage.amplified) Somersloop.POWER_FACTOR else 1.0)
         var average = amount * metadata.powerConsumption * clockFactor
         var max = 0.0
         var variable = false
@@ -198,6 +205,8 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
     val alternatesNeeded: List<Recipe> = graph.nodes.filterIsInstance<RecipeNode>()
         .map { it.usage.recipe }.filter { it.alternate }.distinct().sortedBy { it.name }
     val power: PowerDetails = calculatePower()
+    /** Somersloops the plan slots into Production Amplifier buildings. */
+    val somersloops: Int = graph.nodes.filterIsInstance<RecipeNode>().sumOf { it.machines.somersloops }
 
     private inline fun <reified T : GraphNode> sumNodes(pair: (T) -> Pair<String, Double>): Map<String, Double> {
         val result = LinkedHashMap<String, Double>()

@@ -37,8 +37,9 @@ object Formula {
     fun fuelConsumption(generator: Generator, fuel: Item, overclock: Double): Double =
         if (fuel.energyValue <= 0) 0.0 else ((generator.powerProduction / fuel.energyValue) * 60) * overclock / 100
 
+    /** Since 1.0 a generator's power, fuel and water all scale linearly with its clock speed. */
     fun generatorWaterConsumption(generator: Generator, overclock: Double): Double =
-        (60 * (generator.powerProduction * (overclock / 100).pow(1 / generator.powerProductionExponent) * generator.waterToPowerRatio)) / 1000
+        (60 * generator.powerProduction * (overclock / 100) * generator.waterToPowerRatio) / 1000
 
     fun nuclearWasteProduction(overclock: Double): Double = 10 * (overclock / 100)
 }

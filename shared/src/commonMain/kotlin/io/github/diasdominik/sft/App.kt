@@ -50,6 +50,7 @@ import io.github.diasdominik.sft.ui.codex.ItemDetailScreen
 import io.github.diasdominik.sft.ui.codex.ItemsScreen
 import io.github.diasdominik.sft.ui.codex.SchematicDetailScreen
 import io.github.diasdominik.sft.ui.codex.SchematicsScreen
+import io.github.diasdominik.sft.ui.power.PowerPlannerScreen
 import io.github.diasdominik.sft.ui.production.ProductionListScreen
 import io.github.diasdominik.sft.ui.production.ProductionTabScreen
 import kotlinx.serialization.Serializable
@@ -69,6 +70,7 @@ import org.koin.compose.viewmodel.koinViewModel
 @Serializable data object SchematicsRoute : NavKey
 @Serializable data class SchematicRoute(val slug: String, val uid: Long = newUid()) : NavKey
 @Serializable data object AboutRoute : NavKey
+@Serializable data object PowerRoute : NavKey
 
 private fun newUid() = Random.nextLong()
 
@@ -85,6 +87,7 @@ private val navConfig = SavedStateConfiguration {
             subclass(SchematicsRoute::class, SchematicsRoute.serializer())
             subclass(SchematicRoute::class, SchematicRoute.serializer())
             subclass(AboutRoute::class, AboutRoute.serializer())
+            subclass(PowerRoute::class, PowerRoute.serializer())
         }
     }
 }
@@ -93,6 +96,7 @@ private class TopLevel(val route: NavKey, val label: String, val icon: ImageVect
 
 private val topLevels = listOf(
     TopLevel(ProductionListRoute, "Production", AppIcons.Factory),
+    TopLevel(PowerRoute, "Power", AppIcons.Bolt),
     TopLevel(ItemsRoute, "Items", AppIcons.Items),
     TopLevel(BuildingsRoute, "Buildings", AppIcons.List),
     TopLevel(SchematicsRoute, "Schematics", AppIcons.Flask),
@@ -203,6 +207,13 @@ private fun MainContent(state: AppState, data: GameData) {
                     else SchematicDetailScreen(data, schematic, links, onBack = ::pop)
                 }
                 entry<AboutRoute> { AboutScreen(onBack = ::pop) }
+                entry<PowerRoute> {
+                    PowerPlannerScreen(
+                        data,
+                        onPlanFuel = { fuel, amount, name -> push(ProductionTabRoute(state.addFuelLine(fuel, amount, name).id)) },
+                        actions = menu,
+                    )
+                }
             },
         )
     }

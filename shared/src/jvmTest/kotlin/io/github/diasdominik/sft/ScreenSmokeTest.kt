@@ -14,6 +14,7 @@ import io.github.diasdominik.sft.ui.codex.ItemDetailScreen
 import io.github.diasdominik.sft.ui.codex.ItemsScreen
 import io.github.diasdominik.sft.ui.codex.SchematicDetailScreen
 import io.github.diasdominik.sft.ui.codex.SchematicsScreen
+import io.github.diasdominik.sft.ui.power.PowerPlannerScreen
 import java.io.File
 import kotlin.test.Test
 
@@ -39,4 +40,5 @@ class ScreenSmokeTest {
     @Test fun building() = render { BuildingDetailScreen(data, data.buildingBySlug("constructor")!!, links, onBack = {}) }
     @Test fun schematic() = render { SchematicDetailScreen(data, data.schematics.values.first(), links, onBack = {}) }
     @Test fun about() = render { AboutScreen(onBack = {}) }
+    @Test fun power() = render { PowerPlannerScreen(data, onPlanFuel = { _, _, _ -> }, actions = {}) }
 }

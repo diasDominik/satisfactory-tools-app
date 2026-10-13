@@ -128,7 +128,7 @@ fun ProductionTabScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (page == 0) {
-                    setupContent(SetupSection.valueOf(setupSection), data, tab)
+                    setupContent(SetupSection.valueOf(setupSection), state, data, tab)
                 } else {
                     resultContent(ResultSection.valueOf(resultSection), data, tab, links)
                 }
@@ -176,12 +176,15 @@ fun ProductionTabScreen(
     }
 }
 
-internal fun LazyListScope.setupContent(section: SetupSection, data: GameData, tab: ProductionTab) {
+internal fun LazyListScope.setupContent(section: SetupSection, state: AppState, data: GameData, tab: ProductionTab) {
     when (section) {
         SetupSection.PRODUCTS -> productsSection(data, tab)
         SetupSection.RESOURCES -> resourcesSection(data, tab)
-        SetupSection.INPUTS -> inputsSection(data, tab)
-        SetupSection.ALTERNATES -> recipeToggleSection(data, tab, alternates = true)
+        SetupSection.INPUTS -> inputsSection(state, data, tab)
+        SetupSection.ALTERNATES -> {
+            unlockedAlternatesSection(state, tab)
+            recipeToggleSection(data, tab, alternates = true)
+        }
         SetupSection.BASIC -> recipeToggleSection(data, tab, alternates = false)
         SetupSection.MACHINES -> machinesSection(data, tab)
     }

@@ -2,6 +2,8 @@ package io.github.diasdominik.sft.ui.production
 
 import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -14,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -46,6 +49,8 @@ import io.github.diasdominik.sft.planner.ResourceExtraction
 import io.github.diasdominik.sft.planner.ProductionItem
 import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionType
+import io.github.diasdominik.sft.planner.Somersloop
+import io.github.diasdominik.sft.state.AppState
 import io.github.diasdominik.sft.state.ProductionTab
 import io.github.diasdominik.sft.ui.EntityIcon
 import io.github.diasdominik.sft.ui.EntityPickerDialog
@@ -302,43 +307,140 @@ private fun ChipRow(content: @Composable () -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { content() }
 }
 
-internal fun LazyListScope.inputsSection(data: GameData, tab: ProductionTab) {
-    item { Hint("Items you already have at your disposal, so this factory doesn't need to produce them.") }
+@OptIn(ExperimentalLayoutApi::class)
+internal fun LazyListScope.inputsSection(state: AppState, data: GameData, tab: ProductionTab) {
+    item {
+        Hint(
+            "Items you already have at your disposal, so this factory doesn't need to produce them. " +
+                "Take them from another production line to feed this one with its output; the amounts then follow that line.",
+        )
+    }
     val inputs = tab.request.input
     itemsIndexed(inputs, key = { index, _ -> "i$index" }) { index, input ->
+        val source = input.source?.let { state.tabByUid(it) }
         RowCard {
-            ItemButton(
-                data, input.item, data.inputableItems.map { it.className },
-                onPick = { picked -> tab.updateRequest { r -> r.copy(input = r.input.updateAt(index) { it.copy(item = picked) }) } },
-            )
-            if (input.item != null) {
-                NumberField(
-                    input.amount,
-                    { v -> tab.updateRequest { r -> r.copy(input = r.input.updateAt(index) { it.copy(amount = v) }) } },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = "Amount",
-                    suffix = "/min",
+            if (source != null && input.item != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    EntityIcon(data, input.item, 32.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(data.nameOf(input.item), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "${fmt(input.amount)} /min from ${source.name}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            } else {
+                ItemButton(
+                    data, input.item, data.inputableItems.map { it.className },
+                    onPick = { picked -> tab.updateRequest { r -> r.copy(input = r.input.updateAt(index) { it.copy(item = picked) }) } },
                 )
+                if (input.item != null) {
+                    NumberField(
+                        input.amount,
+                        { v -> tab.updateRequest { r -> r.copy(input = r.input.updateAt(index) { it.copy(amount = v) }) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = "Amount",
+                        suffix = "/min",
+                    )
+                }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input + input.copy()) } }) { Text("Clone") }
+                if (source != null) {
+                    TextButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input.updateAt(index) { it.copy(source = null) }) } }) { Text("Unlink") }
+                } else {
+                    TextButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input + input.copy(source = null)) } }) { Text("Clone") }
+                }
                 TextButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input.removeAt(index)) } }) { Text("Remove") }
             }
         }
     }
     item {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        var picking by remember { mutableStateOf(false) }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input + InputItem()) } }) {
                 Icon(AppIcons.Add, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
                 Text("Add input")
             }
+            OutlinedButton(onClick = { picking = true }) { Text("Take from another line") }
             if (inputs.isNotEmpty()) TextButton(onClick = { tab.updateRequest { r -> r.copy(input = emptyList()) } }) { Text("Clear") }
+        }
+        if (picking) {
+            val sources = state.linkableSources(tab)
+            AlertDialog(
+                onDismissRequest = { picking = false },
+                title = { Text("Take from another line") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        if (sources.isEmpty()) {
+                            Text("There's no other production line to take from yet. Lines that already use this one's output can't feed it back.")
+                        }
+                        sources.forEach { source ->
+                            val outputs = source.outputs
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { state.linkLine(tab, source); picking = false }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                source.icon?.let { EntityIcon(data, it, 32.dp) }
+                                Spacer(Modifier.width(8.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(source.name)
+                                    Text(
+                                        if (outputs.isEmpty()) "No result yet" else outputs.entries.joinToString { (item, amount) -> "${fmt(amount)} ${data.nameOf(item)}" },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { picking = false }) { Text("Cancel") } },
+            )
         }
     }
 }
 
 private fun recipeMachineDisabled(recipe: Recipe, blocked: List<String>) = recipe.producedIn.any { it in blocked }
+
+/** The player's own unlocked alternates, kept across production lines. */
+internal fun LazyListScope.unlockedAlternatesSection(state: AppState, tab: ProductionTab) {
+    item(key = "unlocked") {
+        val unlocked = state.unlockedAlternates
+        val current = tab.request.allowedAlternateRecipes
+        RowCard {
+            Text("My unlocked alternates", style = MaterialTheme.typography.titleSmall)
+            Text(
+                when {
+                    unlocked == null -> "Enable the alternates you've unlocked from hard drives and save them. New production lines then start with them."
+                    unlocked.toSet() == current.toSet() -> "This line uses your ${unlocked.size} unlocked alternates. New production lines start with them."
+                    else -> "${unlocked.size} saved. New production lines start with them."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { state.saveUnlockedAlternates(current) },
+                    enabled = unlocked?.toSet() != current.toSet(),
+                ) { Text("Save these as mine") }
+                if (unlocked != null) {
+                    OutlinedButton(
+                        onClick = { tab.updateRequest { r -> r.copy(allowedAlternateRecipes = unlocked) } },
+                        enabled = unlocked.toSet() != current.toSet(),
+                    ) { Text("Use mine") }
+                }
+            }
+        }
+    }
+}
 
 internal fun LazyListScope.recipeToggleSection(data: GameData, tab: ProductionTab, alternates: Boolean) {
     val recipes = if (alternates) data.alternateRecipes else data.baseRecipes
@@ -428,7 +530,8 @@ internal fun LazyListScope.machinesSection(data: GameData, tab: ProductionTab) {
         Hint(
             "Disable buildings you can't or don't want to use. Their recipes are then excluded too. " +
                 "Set a clock speed (1–250 %) to plan under- or overclocked buildings: fewer buildings when overclocked, " +
-                "and power follows the game's clock speed curve.",
+                "and power follows the game's clock speed curve. Somersloops double a building's output for the same input " +
+                "at four times the power; you can also add them to single recipes in the graph.",
         )
     }
     item {
@@ -444,22 +547,33 @@ internal fun LazyListScope.machinesSection(data: GameData, tab: ProductionTab) {
     }
     items(data.manufacturers, key = { "m" + it.className }) { machine ->
         val enabled = machine.className !in tab.request.blockedMachines
-        Row(
-            Modifier.fillMaxWidth()
-                .clickable { tab.updateRequest { r -> r.copy(blockedMachines = r.blockedMachines.toggle(machine.className)) } }
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(enabled, onCheckedChange = null)
-            EntityIcon(data, machine.className, 32.dp)
-            Spacer(Modifier.width(8.dp))
-            Text(machine.name, modifier = Modifier.weight(1f))
-            if (enabled) {
-                ClockField(tab.request.clockSpeedFor(machine.className)) { v ->
-                    tab.updateRequest { r ->
-                        r.copy(machineClockSpeed = if (v == r.clockSpeed) r.machineClockSpeed - machine.className else r.machineClockSpeed + (machine.className to v))
+        val slots = Somersloop.slots(machine.className)
+        Column {
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable { tab.updateRequest { r -> r.copy(blockedMachines = r.blockedMachines.toggle(machine.className)) } }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(enabled, onCheckedChange = null)
+                EntityIcon(data, machine.className, 32.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(machine.name, modifier = Modifier.weight(1f))
+                if (enabled) {
+                    ClockField(tab.request.clockSpeedFor(machine.className)) { v ->
+                        tab.updateRequest { r ->
+                            r.copy(machineClockSpeed = if (v == r.clockSpeed) r.machineClockSpeed - machine.className else r.machineClockSpeed + (machine.className to v))
+                        }
                     }
                 }
+            }
+            if (enabled && slots > 0) {
+                FilterChip(
+                    selected = machine.className in tab.request.amplifiedMachines,
+                    onClick = { tab.toggleAmplifiedMachine(machine.className) },
+                    label = { Text("Somersloops in all ($slots ${if (slots == 1) "slot" else "slots"} each)") },
+                    modifier = Modifier.padding(start = 48.dp),
+                )
             }
         }
     }

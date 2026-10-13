@@ -75,9 +75,16 @@ data class GraphViewNode(
     /** Whether this node is a step that can be marked as built. */
     val checkable: Boolean = false,
     val done: Boolean = false,
+    /** Extra on/off settings shown in the details card, such as Somersloops. */
+    val toggles: List<GraphToggle> = emptyList(),
 )
 
-data class GraphViewEdge(val from: Int, val to: Int, val label: String = "")
+data class GraphToggle(val label: String, val checked: Boolean, val enabled: Boolean = true, val onToggle: () -> Unit)
+
+/** [warning] marks a link that carries more than one belt or pipe can. */
+data class GraphViewEdge(val from: Int, val to: Int, val label: String = "", val warning: Boolean = false)
+
+private val WarningColor = Color(0xFFE0A100)
 
 private const val NODE_WIDTH = 190f
 private const val NODE_HEIGHT = 64f
@@ -338,7 +345,12 @@ fun GraphView(
                             path.cubicTo(start.x, start.y + dy, end.x, end.y - dy, end.x, end.y)
                         }
                         val emphasised = selected != null && (edge.from == selected || edge.to == selected)
-                        drawPath(path, if (emphasised) highlightColor else lineColor, style = Stroke(width = (if (emphasised) 2.5f else 1.2f) * d))
+                        val color = when {
+                            emphasised -> highlightColor
+                            edge.warning -> WarningColor
+                            else -> lineColor
+                        }
+                        drawPath(path, color, style = Stroke(width = (if (emphasised || edge.warning) 2.5f else 1.2f) * d))
                         // Arrow head
                         val arrow = Path().apply {
                             moveTo(end.x, end.y)
@@ -346,14 +358,17 @@ fun GraphView(
                             lineTo(end.x + 5f * d, end.y - 9f * d)
                             close()
                         }
-                        drawPath(arrow, if (emphasised) highlightColor else lineColor)
+                        drawPath(arrow, color)
                         if (edge.label.isNotEmpty()) {
                             val mid = Offset((start.x + end.x) / 2, (start.y + end.y) / 2)
-                            val measured = measurer.measure(edge.label, labelStyle, maxLines = 2)
+                            val measured = measurer.measure(edge.label, labelStyle, maxLines = 3)
                             val w = measured.size.width.toFloat()
                             val h = measured.size.height.toFloat()
                             val topLeft = Offset(mid.x - w / 2, mid.y - h / 2)
                             drawRoundRect(labelBackground, topLeft - Offset(3f * d, 1f * d), Size(w + 6f * d, h + 2f * d), CornerRadius(4f * d))
+                            if (edge.warning) {
+                                drawRoundRect(WarningColor, topLeft - Offset(3f * d, 1f * d), Size(w + 6f * d, h + 2f * d), CornerRadius(4f * d), style = Stroke(1.5f * d))
+                            }
                             drawText(measured, topLeft = topLeft)
                         }
                     }
@@ -430,6 +445,15 @@ fun GraphView(
                         ) {
                             Checkbox(node.done, onCheckedChange = null)
                             Text("Built")
+                        }
+                    }
+                    node.toggles.forEach { toggle ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable(enabled = toggle.enabled, onClick = toggle.onToggle),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(toggle.checked, onCheckedChange = null, enabled = toggle.enabled)
+                            Text(toggle.label)
                         }
                     }
                 }

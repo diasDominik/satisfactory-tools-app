@@ -2,6 +2,8 @@ package io.github.diasdominik.sft.ui.production
 
 import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -37,6 +40,9 @@ import io.github.diasdominik.sft.data.ItemAmount
 import io.github.diasdominik.sft.planner.ByproductNode
 import io.github.diasdominik.sft.planner.FlowSource
 import io.github.diasdominik.sft.planner.InputNode
+import io.github.diasdominik.sft.planner.Logistics
+import io.github.diasdominik.sft.planner.ProductionRequest
+import io.github.diasdominik.sft.planner.Somersloop
 import io.github.diasdominik.sft.planner.Extraction
 import io.github.diasdominik.sft.planner.MinerNode
 import io.github.diasdominik.sft.planner.Power
@@ -51,6 +57,7 @@ import io.github.diasdominik.sft.ui.AmountChips
 import io.github.diasdominik.sft.ui.EmptyState
 import io.github.diasdominik.sft.ui.EntityIcon
 import io.github.diasdominik.sft.ui.EntityRow
+import io.github.diasdominik.sft.ui.GraphToggle
 import io.github.diasdominik.sft.ui.GraphView
 import io.github.diasdominik.sft.ui.GraphViewEdge
 import io.github.diasdominik.sft.ui.GraphViewNode
@@ -192,6 +199,18 @@ internal fun LazyListScope.overviewSection(data: GameData, tab: ProductionTab, r
             Text(result.power.total.text(), style = MaterialTheme.typography.headlineSmall)
         }
     }
+    if (result.somersloops > 0) {
+        item(key = "ov-somersloops") {
+            SectionCard("Somersloops", actions = { Text("Total: ${result.somersloops}", modifier = Modifier.padding(end = 8.dp)) }) {
+                result.graph.nodes.filterIsInstance<RecipeNode>().filter { it.machines.somersloops > 0 }.forEach { node ->
+                    AmountRow(
+                        data, node.usage.machine.className, "${node.machines.somersloops}",
+                        sub = "${node.usage.recipe.name} · ${node.machines.count}× ${node.usage.machine.name}",
+                    )
+                }
+            }
+        }
+    }
     item(key = "ov-alternates") {
         SectionCard("Alternate recipes needed", actions = { Text("Total: ${result.alternatesNeeded.size}", modifier = Modifier.padding(end = 8.dp)) }) {
             if (result.alternatesNeeded.isEmpty()) Text("None", style = MaterialTheme.typography.bodyMedium)
@@ -210,12 +229,51 @@ private val ProductColor = Color(0xFF5CB85C)
 private val ByproductColor = Color(0xFF1B7A99)
 
 internal fun LazyListScope.graphSection(data: GameData, tab: ProductionTab, result: ProductionResult, links: CodexLinks) {
+    item(key = "graph-logistics") {
+        val metadata = tab.data.metadata
+        Column {
+            Text("Best belt", style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Logistics.BELT_SPEEDS.forEachIndexed { index, speed ->
+                    FilterChip(
+                        selected = metadata.beltTier == index + 1,
+                        onClick = { tab.setBeltTier(index + 1) },
+                        label = { Text("Mk.${index + 1} · ${fmt(speed)}") },
+                    )
+                }
+            }
+            Text("Best pipe", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Logistics.PIPE_SPEEDS.forEachIndexed { index, speed ->
+                    FilterChip(
+                        selected = metadata.pipeTier == index + 1,
+                        onClick = { tab.setPipeTier(index + 1) },
+                        label = { Text("Mk.${index + 1} · ${fmt(speed)} m³") },
+                    )
+                }
+            }
+        }
+    }
     item(key = "graph") {
-        val built = tab.data.metadata.built.toSet()
-        val (nodes, edges) = remember(result, built) { graphModel(data, result, links, built) }
+        val metadata = tab.data.metadata
+        val built = metadata.built.toSet()
+        val request = tab.request
+        val (nodes, edges) = remember(result, built, metadata.beltTier, metadata.pipeTier, request) {
+            graphModel(data, result, links, built, metadata.beltTier, metadata.pipeTier, request, tab)
+        }
+        val overloaded = edges.count { it.warning }
+        if (overloaded > 0) {
+            Text(
+                "$overloaded ${if (overloaded == 1) "link carries" else "links carry"} more than one " +
+                    "Mk.${metadata.beltTier} belt or Mk.${metadata.pipeTier} pipe can; they're marked in yellow with the number needed.",
+                style = MaterialTheme.typography.bodySmall,
+                color = StatusColors.warning,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+        }
         GraphView(
             nodes, edges, height = 560.dp,
-            positions = tab.data.metadata.graphPositions.mapValues { Offset(it.value.x, it.value.y) },
+            positions = metadata.graphPositions.mapValues { Offset(it.value.x, it.value.y) },
             onMoveNode = { key, at -> tab.moveGraphNode(key, at.x, at.y) },
             onResetLayout = tab::resetGraphLayout,
             onToggleDone = tab::toggleBuilt,
@@ -241,25 +299,53 @@ private fun Legend(color: Color, label: String) {
     }
 }
 
-private fun graphModel(data: GameData, result: ProductionResult, links: CodexLinks, built: Set<String>): Pair<List<GraphViewNode>, List<GraphViewEdge>> {
+private fun graphModel(
+    data: GameData,
+    result: ProductionResult,
+    links: CodexLinks,
+    built: Set<String>,
+    beltTier: Int,
+    pipeTier: Int,
+    request: ProductionRequest,
+    tab: ProductionTab,
+): Pair<List<GraphViewNode>, List<GraphViewEdge>> {
     val nodes = result.graph.nodes.map { node ->
         val key = graphNodeKey(node)
         // Machines and extractors are what gets built; products and inputs are just ends of the chain.
         val step = node is RecipeNode || node is MinerNode
         when (node) {
-            is RecipeNode -> GraphViewNode(
-                node.id,
-                node.usage.recipe.name,
-                "${fmt(node.usage.amount * 100 / node.usage.clockSpeed)}× ${node.usage.machine.name}" +
-                    if (node.usage.clockSpeed != 100.0) " at ${fmt(node.usage.clockSpeed, 2)} %" else "",
-                RecipeColor,
-                details = node.machines.machines.map { "${it.amount}× ${node.usage.machine.name} at ${fmt(it.clockSpeed, 4)} % clock speed" } +
-                    listOf("Needed power: ${fmt(node.machines.power.average)} MW") +
-                    node.inputs.map { "IN: ${fmt(it.maxAmount)} / min ${data.nameOf(it.item)}" } +
-                    node.outputs.map { "OUT: ${fmt(it.maxAmount)} / min ${data.nameOf(it.item)}" },
-                action = "Building" to { links.open(data, node.usage.machine.className) },
-                key = key, checkable = true, done = key in built,
-            )
+            is RecipeNode -> {
+                val usage = node.usage
+                val machine = usage.machine
+                val slots = Somersloop.slots(machine.className)
+                val sloops = node.machines.somersloops
+                GraphViewNode(
+                    node.id,
+                    usage.recipe.name,
+                    "${fmt(usage.amount * 100 / usage.clockSpeed)}× ${machine.name}" +
+                        (if (usage.clockSpeed != 100.0) " at ${fmt(usage.clockSpeed, 2)} %" else "") +
+                        (if (sloops > 0) " · $sloops Somersloops" else ""),
+                    RecipeColor,
+                    details = node.machines.machines.map { "${it.amount}× ${machine.name} at ${fmt(it.clockSpeed, 4)} % clock speed" } +
+                        (if (sloops > 0) listOf("$sloops Somersloops ($slots per building): double output, four times the power") else emptyList()) +
+                        listOf("Needed power: ${fmt(node.machines.power.average)} MW") +
+                        node.inputs.map { "IN: ${fmt(it.maxAmount)} / min ${data.nameOf(it.item)}" } +
+                        node.outputs.map { "OUT: ${fmt(it.maxAmount)} / min ${data.nameOf(it.item)}" },
+                    action = "Building" to { links.open(data, machine.className) },
+                    key = key, checkable = true, done = key in built,
+                    toggles = if (slots == 0) emptyList() else {
+                        val byMachine = machine.className in request.amplifiedMachines
+                        listOf(
+                            GraphToggle(
+                                if (byMachine) "Somersloops (on for every ${machine.name})" else "Somersloops in every slot ($slots per building)",
+                                checked = usage.amplified,
+                                enabled = !byMachine,
+                                onToggle = { tab.toggleAmplifiedRecipe(usage.recipe.className) },
+                            ),
+                        )
+                    },
+                )
+            }
             is MinerNode -> GraphViewNode(node.id, data.nameOf(node.item), "Mine ${fmt(node.amount)} / min", MinerColor, action = "Open" to { links.open(data, node.item) }, key = key, checkable = step, done = step && key in built)
             is InputNode -> GraphViewNode(node.id, data.nameOf(node.item), "Input ${fmt(node.amount)} / min", InputColor, action = "Open" to { links.open(data, node.item) }, key = key, checkable = step, done = step && key in built)
             is ProductNode -> GraphViewNode(node.id, data.nameOf(node.item), "Product ${fmt(node.amount)} / min", ProductColor, action = "Open" to { links.open(data, node.item) }, key = key, checkable = step, done = step && key in built)
@@ -268,7 +354,13 @@ private fun graphModel(data: GameData, result: ProductionResult, links: CodexLin
     }
     // Merge parallel edges carrying the same item.
     val edges = result.graph.edges.groupBy { Triple(it.from.id, it.to.id, it.item) }.map { (key, list) ->
-        GraphViewEdge(key.first, key.second, "${data.nameOf(key.third)}\n${fmt(list.sumOf { it.amount })} / min")
+        val amount = list.sumOf { it.amount }
+        val fluid = data.item(key.third)?.liquid == true
+        val capacity = if (fluid) Logistics.pipeSpeed(pipeTier) else Logistics.beltSpeed(beltTier)
+        val lines = Logistics.linesNeeded(amount, capacity)
+        val label = "${data.nameOf(key.third)}\n${fmt(amount)} / min" +
+            if (lines > 1) "\n$lines× Mk.${if (fluid) pipeTier else beltTier} ${if (fluid) "pipes" else "belts"}" else ""
+        GraphViewEdge(key.first, key.second, label, warning = lines > 1)
     }
     return nodes to edges
 }
