@@ -1,5 +1,6 @@
 package io.github.diasdominik.sft.ui.production
 
+import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,9 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -248,7 +246,7 @@ private fun ExpandableCard(header: @Composable () -> Unit, content: @Composable 
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) { header() }
-            Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = if (expanded) "Collapse" else "Expand")
+            Icon(if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore, contentDescription = if (expanded) "Collapse" else "Expand")
         }
         if (expanded) {
             HorizontalDivider()

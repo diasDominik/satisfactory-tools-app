@@ -1,5 +1,6 @@
 package io.github.diasdominik.sft.ui.codex
 
+import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -9,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -63,7 +62,7 @@ fun ItemsScreen(data: GameData, onOpen: (String) -> Unit, actions: @Composable (
     val items = remember(filter, data) { filter.apply(data.items.values) }
     Scaffold(topBar = {
         TopAppBar(title = { Text("Items") }, actions = {
-            IconButton(onClick = { showFilters = !showFilters }) { Icon(Icons.Default.FilterList, contentDescription = "Filters") }
+            IconButton(onClick = { showFilters = !showFilters }) { Icon(AppIcons.Filter, contentDescription = "Filters") }
             actions()
         })
     }) { padding ->

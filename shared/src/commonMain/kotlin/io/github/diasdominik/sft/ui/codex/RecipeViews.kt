@@ -1,5 +1,6 @@
 package io.github.diasdominik.sft.ui.codex
 
+import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,8 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -66,7 +65,7 @@ fun RecipeCard(data: GameData, recipe: Recipe, overclock: Double, links: CodexLi
                 if (recipe.inMachine && machine != null) { a -> Formula.amountPerMinute(recipe, machine, a.amount, overclock) } else null
             AmountChips(data, recipe.ingredients, perMinute) { links.open(data, it) }
             Row(Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(AppIcons.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
             }
             AmountChips(data, recipe.products, perMinute) { links.open(data, it) }
             Spacer(Modifier.height(8.dp))

@@ -1,5 +1,6 @@
 package io.github.diasdominik.sft.ui.production
 
+import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,12 +12,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -111,10 +106,10 @@ internal fun LazyListScope.productsSection(data: GameData, tab: ProductionTab) {
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production.move(index, index - 1)) } }, enabled = index > 0) {
-                    Icon(Icons.Default.ArrowUpward, contentDescription = "Move up")
+                    Icon(AppIcons.ArrowUp, contentDescription = "Move up")
                 }
                 IconButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production.move(index, index + 1)) } }, enabled = index < products.lastIndex) {
-                    Icon(Icons.Default.ArrowDownward, contentDescription = "Move down")
+                    Icon(AppIcons.ArrowDown, contentDescription = "Move down")
                 }
             }
             if (product.item != null) {
@@ -149,12 +144,12 @@ internal fun LazyListScope.productsSection(data: GameData, tab: ProductionTab) {
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production + product.copy()) } }) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                    Icon(AppIcons.Copy, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     Text("Clone")
                 }
                 TextButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production.removeAt(index)) } }) {
-                    Icon(Icons.Default.Close, contentDescription = null)
+                    Icon(AppIcons.Close, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
                     Text("Remove")
                 }
@@ -164,7 +159,7 @@ internal fun LazyListScope.productsSection(data: GameData, tab: ProductionTab) {
     item {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { tab.updateRequest { r -> r.copy(production = r.production + ProductionItem()) } }) {
-                Icon(Icons.Default.Add, contentDescription = null)
+                Icon(AppIcons.Add, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
                 Text("Add product")
             }
@@ -236,7 +231,7 @@ internal fun LazyListScope.inputsSection(data: GameData, tab: ProductionTab) {
     item {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input + InputItem()) } }) {
-                Icon(Icons.Default.Add, contentDescription = null)
+                Icon(AppIcons.Add, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
                 Text("Add input")
             }

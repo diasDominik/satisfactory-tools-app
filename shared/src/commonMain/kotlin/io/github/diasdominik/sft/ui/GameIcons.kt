@@ -7,29 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Album
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Construction
-import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.ElectricalServices
-import androidx.compose.material.icons.filled.Factory
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Foundation
-import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.LinearScale
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Plumbing
-import androidx.compose.material.icons.filled.PrecisionManufacturing
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.Storefront
-import androidx.compose.material.icons.filled.Train
-import androidx.compose.material.icons.filled.ViewQuilt
-import androidx.compose.material.icons.filled.Water
-import androidx.compose.material.icons.filled.Domain
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -155,33 +132,33 @@ fun glyphFor(name: String, className: String): Glyph {
 private fun buildingIcon(name: String): ImageVector {
     val n = name.lowercase()
     return when {
-        "generator" in n || "power storage" in n -> Icons.Default.Bolt
-        "miner" in n || "extractor" in n || "oil pump" in n || "pressurizer" in n -> Icons.Default.Construction
-        "water" in n -> Icons.Default.Water
-        "pipe" in n || "pump" in n || "valve" in n || "fluid" in n -> Icons.Default.Plumbing
-        "conveyor" in n || "belt" in n || "lift" in n || "splitter" in n || "merger" in n -> Icons.Default.LinearScale
-        "railway" in n || "train" in n || "locomotive" in n || "freight" in n -> Icons.Default.Train
-        "power" in n || "pole" in n || "wire" in n || "switch" in n -> Icons.Default.ElectricalServices
-        "storage" in n || "container" in n || "tank" in n || "dimensional" in n -> Icons.Default.Inventory2
-        "truck" in n || "tractor" in n || "explorer" in n || "vehicle" in n || "drone" in n -> Icons.Default.DirectionsCar
-        "light" in n || "sign" in n || "lamp" in n -> Icons.Default.Lightbulb
-        "wall" in n || "window" in n || "roof" in n || "ramp" in n || "beam" in n || "pillar" in n || "stair" in n || "frame" in n -> Icons.Default.ViewQuilt
-        "foundation" in n || "floor" in n || "walkway" in n || "catwalk" in n -> Icons.Default.Foundation
-        listOf("constructor", "assembler", "manufacturer", "smelter", "foundry", "refinery", "blender", "packager", "accelerator", "converter", "encoder").any { it in n } -> Icons.Default.PrecisionManufacturing
-        "workshop" in n || "bench" in n || "hub" in n || "elevator" in n || "m.a.m" in n || "sink" in n -> Icons.Default.Factory
-        else -> Icons.Default.Domain
+        "generator" in n || "power storage" in n -> AppIcons.Bolt
+        "miner" in n || "extractor" in n || "oil pump" in n || "pressurizer" in n -> AppIcons.Drill
+        "water" in n -> AppIcons.Drop
+        "pipe" in n || "pump" in n || "valve" in n || "fluid" in n -> AppIcons.Pipe
+        "conveyor" in n || "belt" in n || "lift" in n || "splitter" in n || "merger" in n -> AppIcons.Conveyor
+        "railway" in n || "train" in n || "locomotive" in n || "freight" in n -> AppIcons.Train
+        "power" in n || "pole" in n || "wire" in n || "switch" in n -> AppIcons.Plug
+        "storage" in n || "container" in n || "tank" in n || "dimensional" in n -> AppIcons.Box
+        "truck" in n || "tractor" in n || "explorer" in n || "vehicle" in n || "drone" in n -> AppIcons.Truck
+        "light" in n || "sign" in n || "lamp" in n -> AppIcons.Lightbulb
+        "wall" in n || "window" in n || "roof" in n || "ramp" in n || "beam" in n || "pillar" in n || "stair" in n || "frame" in n -> AppIcons.Wall
+        "foundation" in n || "floor" in n || "walkway" in n || "catwalk" in n -> AppIcons.Foundation
+        listOf("constructor", "assembler", "manufacturer", "smelter", "foundry", "refinery", "blender", "packager", "accelerator", "converter", "encoder").any { it in n } -> AppIcons.Gear
+        "workshop" in n || "bench" in n || "hub" in n || "elevator" in n || "m.a.m" in n || "sink" in n -> AppIcons.Factory
+        else -> AppIcons.Building
     }
 }
 
 private fun schematicIcon(type: String): ImageVector = when (type) {
-    "EST_Milestone" -> Icons.Default.Flag
-    "EST_MAM" -> Icons.Default.Science
-    "EST_Alternate" -> Icons.Default.Shuffle
-    "EST_ResourceSink" -> Icons.Default.Storefront
-    "EST_HardDrive" -> Icons.Default.Album
-    "EST_Tutorial" -> Icons.Default.School
-    "EST_Customization" -> Icons.Default.Palette
-    else -> Icons.Default.Science
+    "EST_Milestone" -> AppIcons.Flag
+    "EST_MAM" -> AppIcons.Flask
+    "EST_Alternate" -> AppIcons.Shuffle
+    "EST_ResourceSink" -> AppIcons.Store
+    "EST_HardDrive" -> AppIcons.Disc
+    "EST_Tutorial" -> AppIcons.Book
+    "EST_Customization" -> AppIcons.Palette
+    else -> AppIcons.Flask
 }
 
 @Composable

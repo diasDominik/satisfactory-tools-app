@@ -1,5 +1,6 @@
 package io.github.diasdominik.sft
 
+import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,13 +8,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Factory
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -77,10 +71,10 @@ import kotlin.reflect.KClass
 private class TopLevel(val route: Any, val routeClass: KClass<*>, val label: String, val icon: ImageVector)
 
 private val topLevels = listOf(
-    TopLevel(ProductionListRoute, ProductionListRoute::class, "Production", Icons.Default.Factory),
-    TopLevel(ItemsRoute, ItemsRoute::class, "Items", Icons.Default.Category),
-    TopLevel(BuildingsRoute, BuildingsRoute::class, "Buildings", Icons.AutoMirrored.Filled.List),
-    TopLevel(SchematicsRoute, SchematicsRoute::class, "Schematics", Icons.Default.Science),
+    TopLevel(ProductionListRoute, ProductionListRoute::class, "Production", AppIcons.Factory),
+    TopLevel(ItemsRoute, ItemsRoute::class, "Items", AppIcons.Items),
+    TopLevel(BuildingsRoute, BuildingsRoute::class, "Buildings", AppIcons.List),
+    TopLevel(SchematicsRoute, SchematicsRoute::class, "Schematics", AppIcons.Flask),
 )
 
 @Composable
@@ -189,7 +183,7 @@ private fun NavHostController.navigateTopLevel(route: Any) {
 @Composable
 private fun AppMenu(state: AppState, onAbout: () -> Unit) {
     var open by remember { mutableStateOf(false) }
-    IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Menu") }
+    IconButton(onClick = { open = true }) { Icon(AppIcons.MoreVert, contentDescription = "Menu") }
     DropdownMenu(open, onDismissRequest = { open = false }) {
         Text(
             "Game version",
@@ -207,6 +201,6 @@ private fun AppMenu(state: AppState, onAbout: () -> Unit) {
             )
         }
         HorizontalDivider()
-        DropdownMenuItem(text = { Text("About") }, leadingIcon = { Icon(Icons.Default.Info, null) }, onClick = { open = false; onAbout() })
+        DropdownMenuItem(text = { Text("About") }, leadingIcon = { Icon(AppIcons.Info, null) }, onClick = { open = false; onAbout() })
     }
 }

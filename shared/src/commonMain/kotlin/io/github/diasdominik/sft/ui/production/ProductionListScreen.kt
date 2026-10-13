@@ -1,5 +1,6 @@
 package io.github.diasdominik.sft.ui.production
 
+import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,15 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -88,24 +80,24 @@ fun ProductionListScreen(
             if (selecting) {
                 TopAppBar(
                     title = { Text("${selected.size} selected") },
-                    navigationIcon = { IconButton(onClick = { selected.clear() }) { Icon(Icons.Default.Close, contentDescription = "Clear selection") } },
+                    navigationIcon = { IconButton(onClick = { selected.clear() }) { Icon(AppIcons.Close, contentDescription = "Clear selection") } },
                     actions = {
-                        IconButton(onClick = { selected.clear(); selected.addAll(state.tabs.map { it.id }) }) { Icon(Icons.Default.SelectAll, contentDescription = "Select all") }
+                        IconButton(onClick = { selected.clear(); selected.addAll(state.tabs.map { it.id }) }) { Icon(AppIcons.SelectAll, contentDescription = "Select all") }
                         IconButton(onClick = {
                             val tabs = state.tabs.filter { it.id in selected }
                             share("Satisfactory Tools export", exportTabs(tabs))
-                        }) { Icon(Icons.Default.Share, contentDescription = "Export selected") }
-                        IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, contentDescription = "Remove selected") }
+                        }) { Icon(AppIcons.Share, contentDescription = "Export selected") }
+                        IconButton(onClick = { confirmDelete = true }) { Icon(AppIcons.Delete, contentDescription = "Remove selected") }
                     },
                 )
             } else {
                 TopAppBar(
                     title = { Text("Production lines") },
                     actions = {
-                        IconButton(onClick = { showImport = true }) { Icon(Icons.Default.FileDownload, contentDescription = "Import") }
+                        IconButton(onClick = { showImport = true }) { Icon(AppIcons.Import, contentDescription = "Import") }
                         if (state.tabs.isNotEmpty()) {
                             IconButton(onClick = { share("Satisfactory Tools export", exportTabs(state.tabs.toList())) }) {
-                                Icon(Icons.Default.Share, contentDescription = "Export all")
+                                Icon(AppIcons.Share, contentDescription = "Export all")
                             }
                         }
                         actions()
@@ -117,7 +109,7 @@ fun ProductionListScreen(
             if (!selecting) {
                 ExtendedFloatingActionButton(
                     onClick = { onOpen(state.addTab().id) },
-                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    icon = { Icon(AppIcons.Add, contentDescription = null) },
                     text = { Text("New production line") },
                 )
             }
@@ -221,11 +213,11 @@ private fun summary(data: GameData, tab: ProductionTab): String {
 @Composable
 private fun TabMenu(state: AppState, tab: ProductionTab, share: (String, String) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
+    IconButton(onClick = { open = true }) { Icon(AppIcons.MoreVert, contentDescription = "More") }
     DropdownMenu(open, onDismissRequest = { open = false }) {
-        DropdownMenuItem(text = { Text("Clone") }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) }, onClick = { open = false; state.cloneTab(tab) })
-        DropdownMenuItem(text = { Text("Export") }, leadingIcon = { Icon(Icons.Default.Share, null) }, onClick = { open = false; share(tab.name, exportTabs(listOf(tab))) })
-        DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { open = false; state.removeTab(tab) })
+        DropdownMenuItem(text = { Text("Clone") }, leadingIcon = { Icon(AppIcons.Copy, null) }, onClick = { open = false; state.cloneTab(tab) })
+        DropdownMenuItem(text = { Text("Export") }, leadingIcon = { Icon(AppIcons.Share, null) }, onClick = { open = false; share(tab.name, exportTabs(listOf(tab))) })
+        DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(AppIcons.Delete, null) }, onClick = { open = false; state.removeTab(tab) })
     }
 }
 

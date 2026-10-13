@@ -1,5 +1,6 @@
 package io.github.diasdominik.sft.ui.production
 
+import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,15 +9,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -81,16 +73,16 @@ fun ProductionTabScreen(state: AppState, data: GameData, tab: ProductionTab, lin
     Scaffold(topBar = {
         TopAppBar(
             title = { Text(tab.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(AppIcons.ArrowBack, contentDescription = "Back") } },
             actions = {
-                IconButton(onClick = { share(tab.name, exportTabs(listOf(tab))) }) { Icon(Icons.Default.Share, contentDescription = "Export") }
-                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
+                IconButton(onClick = { share(tab.name, exportTabs(listOf(tab))) }) { Icon(AppIcons.Share, contentDescription = "Export") }
+                IconButton(onClick = { menu = true }) { Icon(AppIcons.MoreVert, contentDescription = "More") }
                 DropdownMenu(menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { menu = false; renaming = true })
-                    DropdownMenuItem(text = { Text("Change icon") }, leadingIcon = { Icon(Icons.Default.Image, null) }, onClick = { menu = false; pickingIcon = true })
-                    DropdownMenuItem(text = { Text("Clone") }, leadingIcon = { Icon(Icons.Default.ContentCopy, null) }, onClick = { menu = false; state.cloneTab(tab) })
-                    DropdownMenuItem(text = { Text("Reset to default") }, leadingIcon = { Icon(Icons.Default.RestartAlt, null) }, onClick = { menu = false; confirmReset = true })
-                    DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(Icons.Default.Delete, null) }, onClick = { menu = false; confirmDelete = true })
+                    DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(AppIcons.Edit, null) }, onClick = { menu = false; renaming = true })
+                    DropdownMenuItem(text = { Text("Change icon") }, leadingIcon = { Icon(AppIcons.Image, null) }, onClick = { menu = false; pickingIcon = true })
+                    DropdownMenuItem(text = { Text("Clone") }, leadingIcon = { Icon(AppIcons.Copy, null) }, onClick = { menu = false; state.cloneTab(tab) })
+                    DropdownMenuItem(text = { Text("Reset to default") }, leadingIcon = { Icon(AppIcons.Reset, null) }, onClick = { menu = false; confirmReset = true })
+                    DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(AppIcons.Delete, null) }, onClick = { menu = false; confirmDelete = true })
                 }
             },
         )
