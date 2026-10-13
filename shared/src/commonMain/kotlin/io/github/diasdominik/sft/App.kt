@@ -24,22 +24,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavDestination.Companion.hasRoute
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.ui.NavDisplay
+import androidx.savedstate.serialization.SavedStateConfiguration
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.GameVersion
 import io.github.diasdominik.sft.state.AppState
@@ -55,26 +53,49 @@ import io.github.diasdominik.sft.ui.codex.SchematicsScreen
 import io.github.diasdominik.sft.ui.production.ProductionListScreen
 import io.github.diasdominik.sft.ui.production.ProductionTabScreen
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
+import kotlin.random.Random
 import org.koin.compose.viewmodel.koinViewModel
-import kotlin.reflect.KClass
 
-@Serializable object ProductionListRoute
-@Serializable data class ProductionTabRoute(val id: Long)
-@Serializable object ItemsRoute
-@Serializable data class ItemRoute(val slug: String)
-@Serializable object BuildingsRoute
-@Serializable data class BuildingRoute(val slug: String)
-@Serializable object SchematicsRoute
-@Serializable data class SchematicRoute(val slug: String)
-@Serializable object AboutRoute
+// Detail routes carry a random uid so the same page can sit in a back stack twice
+// (item A -> item B -> item A) without clashing saved state.
+@Serializable data object ProductionListRoute : NavKey
+@Serializable data class ProductionTabRoute(val id: Long, val uid: Long = newUid()) : NavKey
+@Serializable data object ItemsRoute : NavKey
+@Serializable data class ItemRoute(val slug: String, val uid: Long = newUid()) : NavKey
+@Serializable data object BuildingsRoute : NavKey
+@Serializable data class BuildingRoute(val slug: String, val uid: Long = newUid()) : NavKey
+@Serializable data object SchematicsRoute : NavKey
+@Serializable data class SchematicRoute(val slug: String, val uid: Long = newUid()) : NavKey
+@Serializable data object AboutRoute : NavKey
 
-private class TopLevel(val route: Any, val routeClass: KClass<*>, val label: String, val icon: ImageVector)
+private fun newUid() = Random.nextLong()
+
+/** Non-JVM targets can't reflect on NavKey subclasses, so the back stack's serializers are listed here. */
+private val navConfig = SavedStateConfiguration {
+    serializersModule = SerializersModule {
+        polymorphic(NavKey::class) {
+            subclass(ProductionListRoute::class, ProductionListRoute.serializer())
+            subclass(ProductionTabRoute::class, ProductionTabRoute.serializer())
+            subclass(ItemsRoute::class, ItemsRoute.serializer())
+            subclass(ItemRoute::class, ItemRoute.serializer())
+            subclass(BuildingsRoute::class, BuildingsRoute.serializer())
+            subclass(BuildingRoute::class, BuildingRoute.serializer())
+            subclass(SchematicsRoute::class, SchematicsRoute.serializer())
+            subclass(SchematicRoute::class, SchematicRoute.serializer())
+            subclass(AboutRoute::class, AboutRoute.serializer())
+        }
+    }
+}
+
+private class TopLevel(val route: NavKey, val label: String, val icon: ImageVector)
 
 private val topLevels = listOf(
-    TopLevel(ProductionListRoute, ProductionListRoute::class, "Production", AppIcons.Factory),
-    TopLevel(ItemsRoute, ItemsRoute::class, "Items", AppIcons.Items),
-    TopLevel(BuildingsRoute, BuildingsRoute::class, "Buildings", AppIcons.List),
-    TopLevel(SchematicsRoute, SchematicsRoute::class, "Schematics", AppIcons.Flask),
+    TopLevel(ProductionListRoute, "Production", AppIcons.Factory),
+    TopLevel(ItemsRoute, "Items", AppIcons.Items),
+    TopLevel(BuildingsRoute, "Buildings", AppIcons.List),
+    TopLevel(SchematicsRoute, "Schematics", AppIcons.Flask),
 )
 
 @Composable
@@ -99,31 +120,43 @@ fun App() {
     }
 }
 
+/**
+ * One back stack per bottom-bar destination, so each tab keeps its place. The displayed stack is the
+ * Production stack followed by the selected tab's stack, which makes Back from a tab's root return
+ * to Production.
+ */
 @Composable
 private fun MainContent(state: AppState, data: GameData) {
-    val navController = rememberNavController()
-    val backStack by navController.currentBackStackEntryAsState()
-    val destination = backStack?.destination
-    val showBottomBar = topLevels.any { top -> destination?.hierarchy?.any { it.hasRoute(top.routeClass) } == true }
-    val links = remember(navController) {
-        CodexLinks(
-            openItem = { navController.navigate(ItemRoute(it)) },
-            openBuilding = { navController.navigate(BuildingRoute(it)) },
-            openSchematic = { navController.navigate(SchematicRoute(it)) },
-        )
+    val stacks = topLevels.map { rememberNavBackStack(navConfig, it.route) }
+    var selected by rememberSaveable { mutableIntStateOf(0) }
+    val current = stacks[selected]
+    val backStack = if (selected == 0) stacks[0].toList() else stacks[0] + current
+
+    fun push(route: NavKey) = current.add(route)
+    fun pop() {
+        if (current.size > 1) current.removeAt(current.lastIndex) else selected = 0
     }
-    val menu: @Composable () -> Unit = { AppMenu(state, onAbout = { navController.navigate(AboutRoute) }) }
+
+    val links = CodexLinks(
+        openItem = { push(ItemRoute(it)) },
+        openBuilding = { push(BuildingRoute(it)) },
+        openSchematic = { push(SchematicRoute(it)) },
+    )
+    val menu: @Composable () -> Unit = { AppMenu(state, onAbout = { push(AboutRoute) }) }
+    val showBottomBar = current.size == 1
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar {
-                    topLevels.forEach { top ->
-                        val selected = destination?.hierarchy?.any { it.hasRoute(top.routeClass) } == true
+                    topLevels.forEachIndexed { index, top ->
                         NavigationBarItem(
-                            selected = selected,
-                            onClick = { navController.navigateTopLevel(top.route) },
+                            selected = selected == index,
+                            onClick = {
+                                // Tapping the selected tab again returns to its root.
+                                if (selected == index) stacks[index].retainAll(listOf(top.route)) else selected = index
+                            },
                             icon = { Icon(top.icon, contentDescription = null) },
                             label = { Text(top.label) },
                         )
@@ -132,51 +165,40 @@ private fun MainContent(state: AppState, data: GameData) {
             }
         },
     ) { padding ->
-        NavHost(
-            navController,
-            startDestination = ProductionListRoute,
+        NavDisplay(
+            backStack = backStack,
             modifier = Modifier.padding(padding).consumeWindowInsets(padding),
-        ) {
-            composable<ProductionListRoute> {
-                ProductionListScreen(state, data, onOpen = { navController.navigate(ProductionTabRoute(it)) }, actions = menu)
-            }
-            composable<ProductionTabRoute> { entry ->
-                val id = entry.toRoute<ProductionTabRoute>().id
-                val tab = state.tab(id)
-                if (tab == null) {
-                    LaunchedEffect(id) { navController.popBackStack() }
-                } else {
-                    ProductionTabScreen(state, data, tab, links, onBack = { navController.popBackStack() })
+            onBack = ::pop,
+            entryProvider = entryProvider {
+                entry<ProductionListRoute> {
+                    ProductionListScreen(state, data, onOpen = { push(ProductionTabRoute(it)) }, actions = menu)
                 }
-            }
-            composable<ItemsRoute> { ItemsScreen(data, onOpen = links.openItem, actions = menu) }
-            composable<ItemRoute> { entry ->
-                val item = data.itemBySlug(entry.toRoute<ItemRoute>().slug)
-                if (item == null) LaunchedEffect(Unit) { navController.popBackStack() }
-                else ItemDetailScreen(data, item, links, onBack = { navController.popBackStack() })
-            }
-            composable<BuildingsRoute> { BuildingsScreen(data, onOpen = links.openBuilding, actions = menu) }
-            composable<BuildingRoute> { entry ->
-                val building = data.buildingBySlug(entry.toRoute<BuildingRoute>().slug)
-                if (building == null) LaunchedEffect(Unit) { navController.popBackStack() }
-                else BuildingDetailScreen(data, building, links, onBack = { navController.popBackStack() })
-            }
-            composable<SchematicsRoute> { SchematicsScreen(data, onOpen = links.openSchematic, actions = menu) }
-            composable<SchematicRoute> { entry ->
-                val schematic = data.schematicBySlug(entry.toRoute<SchematicRoute>().slug)
-                if (schematic == null) LaunchedEffect(Unit) { navController.popBackStack() }
-                else SchematicDetailScreen(data, schematic, links, onBack = { navController.popBackStack() })
-            }
-            composable<AboutRoute> { AboutScreen(onBack = { navController.popBackStack() }) }
-        }
-    }
-}
-
-private fun NavHostController.navigateTopLevel(route: Any) {
-    navigate(route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
-        launchSingleTop = true
-        restoreState = true
+                entry<ProductionTabRoute> { route ->
+                    val tab = state.tab(route.id)
+                    if (tab == null) LaunchedEffect(route) { pop() }
+                    else ProductionTabScreen(state, data, tab, links, onBack = ::pop)
+                }
+                entry<ItemsRoute> { ItemsScreen(data, onOpen = links.openItem, actions = menu) }
+                entry<ItemRoute> { route ->
+                    val item = data.itemBySlug(route.slug)
+                    if (item == null) LaunchedEffect(route) { pop() }
+                    else ItemDetailScreen(data, item, links, onBack = ::pop)
+                }
+                entry<BuildingsRoute> { BuildingsScreen(data, onOpen = links.openBuilding, actions = menu) }
+                entry<BuildingRoute> { route ->
+                    val building = data.buildingBySlug(route.slug)
+                    if (building == null) LaunchedEffect(route) { pop() }
+                    else BuildingDetailScreen(data, building, links, onBack = ::pop)
+                }
+                entry<SchematicsRoute> { SchematicsScreen(data, onOpen = links.openSchematic, actions = menu) }
+                entry<SchematicRoute> { route ->
+                    val schematic = data.schematicBySlug(route.slug)
+                    if (schematic == null) LaunchedEffect(route) { pop() }
+                    else SchematicDetailScreen(data, schematic, links, onBack = ::pop)
+                }
+                entry<AboutRoute> { AboutScreen(onBack = ::pop) }
+            },
+        )
     }
 }
 

@@ -5,7 +5,7 @@ android-minSdk = "24"
 android-targetSdk = "37"
 androidx-activity = "1.13.0"
 androidx-lifecycle = "2.11.0"
-androidx-navigation = "2.9.2"
+navigation3 = "1.1.2"
 compose-material3 = "1.11.0-alpha07"
 compose-multiplatform = "1.12.1"
 kotlin = "2.4.10"
@@ -36,7 +36,7 @@ koin-annotations = { module = "io.insert-koin:koin-annotations" }
 koin-compose = { module = "io.insert-koin:koin-compose" }
 koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel" }
 koin-android = { module = "io.insert-koin:koin-android" }
-navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "androidx-navigation" }
+navigation3-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
