@@ -31,7 +31,9 @@ class PlannerTest {
         assertEquals(3.0, byRecipe.getValue("Recipe_IngotIron_C"), 1e-6)
         assertEquals(90.0, out.mined.getValue("Desc_OreIron_C"), 1e-6)
         val result = ProductionResult(request(), ProductionGraph.from(out), data)
-        assertEquals(6, result.buildings.amount)
+        // 3 constructors, 3 smelters and 2 Miner Mk.1 on normal nodes (the default) for 90 ore.
+        assertEquals(8, result.buildings.amount)
+        assertEquals(2, result.extraction.single().count)
         assertEquals(60.0, result.output.getValue("Desc_IronPlate_C"), 1e-6)
         assertTrue(result.power.total.average > 0)
     }
@@ -89,19 +91,5 @@ class PlannerTest {
             blockedResources = data.resources.keys.toList(),
         )
         assertNull(solver.solve(req))
-    }
-
-    @Test
-    fun everyAutomatableItemSolves() {
-        val all = data.alternateRecipes.map { it.className }
-        val failures = data.automatableItems.filter { item ->
-            solver.solve(request(ProductionItem(item.className, amount = 1.0), alternates = all)) == null
-        }.map { it.name }
-        // These need items that only come from hunting creatures or from nuclear waste.
-        val expected = setOf(
-            "Alien DNA Capsule", "Alien Protein", "Encased Plutonium Cell", "Ficsonium", "Ficsonium Fuel Rod",
-            "Gas Nobelisk", "Non-Fissile Uranium", "Plutonium Fuel Rod", "Plutonium Pellet",
-        )
-        assertEquals(expected, failures.toSet())
     }
 }

@@ -198,6 +198,36 @@ fun NumberField(
     )
 }
 
+/** Whole-number field where an empty box means "not set". */
+@Composable
+fun OptionalCountField(
+    value: Int?,
+    onValueChange: (Int?) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: String? = null,
+    enabled: Boolean = true,
+) {
+    var text by remember { mutableStateOf(value?.toString() ?: "") }
+    LaunchedEffect(value) {
+        if (text.toIntOrNull() != value) text = value?.toString() ?: ""
+    }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { new ->
+            val cleaned = new.filter { it.isDigit() }.take(4)
+            text = cleaned
+            onValueChange(cleaned.toIntOrNull())
+        },
+        modifier = modifier,
+        enabled = enabled,
+        singleLine = true,
+        label = label?.let { { Text(it) } },
+        placeholder = placeholder?.let { { Text(it) } },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    )
+}
+
 private fun plain(value: Double) = Numbers.format(value, 6).replace(",", "")
 
 /** Searchable picker dialog for items (or any class names with names in [data]). */

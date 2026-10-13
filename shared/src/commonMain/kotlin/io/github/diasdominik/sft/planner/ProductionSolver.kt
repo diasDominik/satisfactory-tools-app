@@ -38,17 +38,8 @@ class ProductionSolver(private val data: GameData) {
         val maximize = products.filter { it.type == ProductionType.MAXIMIZE && it.ratio > 0 }
         if (perMinute.isEmpty() && maximize.isEmpty()) return null
 
-        val recipes = allowedRecipes(request)
-
-        // Variable layout
-        var next = 0
-        val recipeVar = recipes.associateWith { next++ }
-        val resourceVar = LinkedHashMap<String, Int>()
-        for (resource in data.resources.keys) {
-            if (resource in request.blockedResources) continue
-            val max = request.resourceMax[resource] ?: 0.0
-            if (max <= 0) continue
-            resourceVar[resource] = next++
+        val resources = data.resources.keys.filter { resource ->
+            resource !in request.blockedResources && Extraction.effectiveLimit(data, request, resource) > 0
         }
         val inputAmounts = LinkedHashMap<String, Double>()
         for (input in request.input) {
@@ -56,6 +47,16 @@ class ProductionSolver(private val data: GameData) {
             if (input.amount <= 0 || data.item(item) == null) continue
             inputAmounts[item] = (inputAmounts[item] ?: 0.0) + input.amount
         }
+        // Recipes whose ingredients can't be made never run. Leaving them out keeps the program
+        // small and avoids loops that would need some of their own output to start.
+        val reachable = reachableItems(allowedRecipes(request), resources + inputAmounts.keys)
+        val recipes = allowedRecipes(request).filter { r -> r.ingredients.all { it.item in reachable } }
+
+        // Variable layout
+        var next = 0
+        val recipeVar = recipes.associateWith { next++ }
+        val resourceVar = LinkedHashMap<String, Int>()
+        for (resource in resources) resourceVar[resource] = next++
         val inputVar = inputAmounts.keys.associateWith { next++ }
 
         val itemCoefficients = LinkedHashMap<String, MutableMap<Int, Double>>()
@@ -83,7 +84,7 @@ class ProductionSolver(private val data: GameData) {
         fun buildProgram(): LinearProgram {
             val lp = LinearProgram(variableCount)
             for ((resource, variable) in resourceVar) {
-                val max = request.resourceMax[resource] ?: 0.0
+                val max = Extraction.effectiveLimit(data, request, resource)
                 if (max < 1e12) lp.upperBounds[variable] = max
             }
             for ((item, variable) in inputVar) lp.upperBounds[variable] = inputAmounts.getValue(item)
@@ -136,7 +137,8 @@ class ProductionSolver(private val data: GameData) {
         val inputs = inputVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
         val productAmounts = LinkedHashMap<String, Double>()
         for ((item, amount) in demand) productAmounts[item] = amount
-        for ((item, ratio) in maxRatio) productAmounts.mergeWith(item, ratio * scale) { a, b -> a + b }
+        val finalScale = if (scaleVar >= 0) solution[scaleVar] else 0.0
+        for ((item, ratio) in maxRatio) productAmounts.mergeWith(item, ratio * finalScale) { a, b -> a + b }
         val byproducts = byproductVar.mapValues { clean(solution[it.value]) }.filterValues { it > 1e-6 }
 
         return SolverOutput(usages, mined, inputs, productAmounts, byproducts)
@@ -159,4 +161,19 @@ class ProductionSolver(private val data: GameData) {
     private companion object {
         const val TIE_BREAK = 1e-5
     }
+}
+
+/** Items that can be made at all, ignoring amounts: a recipe works once all its ingredients can. */
+internal fun reachableItems(recipes: List<Recipe>, sources: Collection<String>): Set<String> {
+    val result = HashSet(sources)
+    var changed = true
+    while (changed) {
+        changed = false
+        for (recipe in recipes) {
+            if (recipe.ingredients.all { it.item in result }) {
+                for (p in recipe.products) if (result.add(p.item)) changed = true
+            }
+        }
+    }
+    return result
 }

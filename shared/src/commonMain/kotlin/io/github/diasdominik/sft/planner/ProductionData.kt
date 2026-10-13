@@ -48,4 +48,6 @@ data class ProductionRequest(
     val sinkableResources: List<String> = emptyList(),
     val production: List<ProductionItem> = listOf(ProductionItem()),
     val input: List<InputItem> = emptyList(),
+    /** App-only: extractor, purity, clock speed and node count per raw resource. */
+    val extraction: Map<String, ResourceExtraction> = emptyMap(),
 )

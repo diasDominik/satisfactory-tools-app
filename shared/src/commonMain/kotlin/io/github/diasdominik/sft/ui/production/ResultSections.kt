@@ -37,6 +37,7 @@ import io.github.diasdominik.sft.data.ItemAmount
 import io.github.diasdominik.sft.planner.ByproductNode
 import io.github.diasdominik.sft.planner.FlowSource
 import io.github.diasdominik.sft.planner.InputNode
+import io.github.diasdominik.sft.planner.Extraction
 import io.github.diasdominik.sft.planner.MinerNode
 import io.github.diasdominik.sft.planner.Power
 import io.github.diasdominik.sft.planner.ProductNode
@@ -59,7 +60,7 @@ import io.github.diasdominik.sft.ui.fmt
 private fun Power.text() = if (isVariable) "${fmt(average)} MW (up to ${fmt(max)} MW)" else "${fmt(average)} MW"
 
 @Composable
-internal fun StatusMessage(status: ResultStatus) {
+internal fun StatusMessage(status: ResultStatus, problems: List<String> = emptyList()) {
     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         when (status) {
             ResultStatus.NO_INPUT -> Text(
@@ -73,13 +74,14 @@ internal fun StatusMessage(status: ResultStatus) {
             }
             ResultStatus.NO_RESULT -> {
                 Text("No solution found", style = MaterialTheme.typography.titleMedium, color = StatusColors.danger)
-                Text(
-                    "This can be due to many things: a raw resource the line needs is disabled, the limits are too low for the " +
-                        "requested amount, or recipes or buildings the product needs are disabled.",
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                problems.forEach { problem ->
+                    Text(
+                        problem,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             ResultStatus.RESULT -> {}
         }
@@ -140,6 +142,26 @@ internal fun LazyListScope.overviewSection(data: GameData, tab: ProductionTab, r
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
                 )
+            }
+        }
+    }
+    if (result.extraction.isNotEmpty()) {
+        item(key = "ov-extraction") {
+            SectionCard("Extractors", actions = { Text("Total: ${result.extraction.sumOf { it.count }}", modifier = Modifier.padding(end = 8.dp)) }) {
+                result.extraction.forEach { e ->
+                    val s = e.settings
+                    AmountRow(
+                        data, e.resource, "${e.count}× ${e.extractor.name}",
+                        sub = buildList {
+                            if (Extraction.hasPurity(e.extractor.className)) add("${s.purity.label} node${if (e.count == 1) "" else "s"}")
+                            add("${fmt(e.ratePerExtractor)} ${unit(data, e.resource)} each at ${fmt(s.clockSpeed, 2)} %")
+                            add(e.groups.joinToString(" + ") { "${it.amount} at ${fmt(it.clockSpeed, 2)} %" })
+                            s.nodes?.let { add("uses ${e.count} of $it nodes") }
+                            add("${fmt(e.power)} MW")
+                        }.joinToString(" · "),
+                        onClick = { links.open(data, e.extractor.className) },
+                    )
+                }
             }
         }
     }
@@ -321,7 +343,7 @@ internal fun LazyListScope.buildingsSection(data: GameData, result: ProductionRe
         }) {
             details.recipes.forEach { (recipe, r) ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Text(data.recipe(recipe)?.name ?: recipe, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Text(data.recipe(recipe)?.name ?: data.nameOf(recipe), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     Text("${r.amount}×", style = MaterialTheme.typography.bodyMedium)
                 }
                 AmountChips(data, r.resources.map { ItemAmount(it.key, it.value) }) { links.open(data, it) }
@@ -352,7 +374,7 @@ internal fun LazyListScope.powerSection(data: GameData, result: ProductionResult
             }
         }) {
             details.recipes.forEach { (recipe, r) ->
-                Text(data.recipe(recipe)?.name ?: recipe, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+                Text(data.recipe(recipe)?.name ?: data.nameOf(recipe), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
                 r.machines.forEach { m ->
                     FlowLine("${m.amount}× at ${fmt(m.clockSpeed, 4)} %", m.power.text(), "")
                 }

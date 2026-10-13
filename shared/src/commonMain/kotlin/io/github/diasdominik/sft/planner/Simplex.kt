@@ -36,9 +36,10 @@ object Simplex {
         private set
 
     private const val EPS = 1e-9
-    private const val PIVOT_EPS = 1e-9
-    private const val FEASIBILITY_EPS = 1e-6
+    private const val PIVOT_EPS = 1e-7
+    private const val FEASIBILITY_EPS = 1e-8
     private const val MAX_ITERATIONS = 50_000
+    private const val REINVERT_EVERY = 500
 
     fun solve(lp: LinearProgram): LpResult {
         lastIterations = 0
@@ -65,6 +66,8 @@ object Simplex {
                 Row(r.coefficients.mapValues { -it.value }, flipped, -r.rhs)
             } else r
         }
+
+        val constraintScale = 1.0 + (normalised.take(lp.constraints.size).maxOfOrNull { it.rhs } ?: 0.0)
 
         val slackCount = normalised.count { it.relation != LinearProgram.Relation.EQ }
         val artificialCount = normalised.count { it.relation != LinearProgram.Relation.LE }
@@ -101,15 +104,18 @@ object Simplex {
         }
 
         val initialBasis = basis.copyOf()
+        val original = Array(m) { tableau[it].copyOf() }
 
         // Phase 1: minimise the sum of artificial variables.
         if (artificialCount > 0) {
             val phase1 = DoubleArray(totalColumns)
             for (j in 0 until totalColumns) if (isArtificial[j]) phase1[j] = 1.0
-            val status = runSimplex(tableau, basis, phase1, totalColumns, initialBasis, allowed = { true })
+            val status = runSimplex(tableau, original, basis, phase1, totalColumns, initialBasis, allowed = { true })
             if (status != Status.OPTIMAL) return LpResult.Infeasible
             val infeasibility = basis.indices.sumOf { i -> if (isArtificial[basis[i]]) tableau[i][rhsColumn] else 0.0 }
-            if (infeasibility > FEASIBILITY_EPS * (1.0 + maxRhs(tableau, rhsColumn))) return LpResult.Infeasible
+            // Scale by the constraint right-hand sides only: upper bounds can be huge (map limits) and
+            // would hide real infeasibility such as producing an item from nothing.
+            if (infeasibility > FEASIBILITY_EPS * constraintScale) return LpResult.Infeasible
             // Drive remaining (zero-valued) artificials out of the basis where possible.
             for (i in 0 until m) {
                 if (!isArtificial[basis[i]]) continue
@@ -128,27 +134,85 @@ object Simplex {
         // Phase 2: original objective, artificial columns may not enter.
         val cost = DoubleArray(totalColumns)
         for (j in 0 until n) cost[j] = lp.objective[j]
-        val status = runSimplex(tableau, basis, cost, totalColumns, initialBasis, allowed = { !isArtificial[it] })
+        val status = runSimplex(tableau, original, basis, cost, totalColumns, initialBasis, allowed = { !isArtificial[it] })
         if (status == Status.UNBOUNDED) return LpResult.Unbounded
         if (status == Status.ITERATION_LIMIT) return LpResult.Infeasible
 
+        // Thousands of pivots leave rounding errors in the tableau, so take the final basis and solve
+        // for its values again from the original constraints.
+        val basic = solveBasis(original, basis, rhsColumn) ?: DoubleArray(m) { tableau[it][rhsColumn] }
         val values = DoubleArray(n)
         for (i in 0 until m) {
             val b = basis[i]
-            if (b < n) values[b] = tableau[i][rhsColumn].let { if (abs(it) < EPS) 0.0 else it }
+            if (b < n) values[b] = basic[i].let { if (abs(it) < EPS) 0.0 else it }
         }
         var obj = 0.0
         for (j in 0 until n) obj += lp.objective[j] * values[j]
         return LpResult.Optimal(values, obj)
     }
 
-    private fun maxRhs(tableau: Array<DoubleArray>, rhsColumn: Int): Double =
-        tableau.maxOfOrNull { abs(it[rhsColumn]) } ?: 0.0
-
     private enum class Status { OPTIMAL, UNBOUNDED, ITERATION_LIMIT }
+
+    /**
+     * Rebuilds the tableau for the current basis from the original rows (Gauss-Jordan), dropping the
+     * rounding errors that thousands of pivots pile up. Keeps the old tableau if the basis is singular.
+     */
+    private fun reinvert(tableau: Array<DoubleArray>, original: Array<DoubleArray>, basis: IntArray) {
+        val m = basis.size
+        val work = Array(m) { original[it].copyOf() }
+        val used = BooleanArray(m)
+        val order = IntArray(m)
+        for (k in 0 until m) {
+            val col = basis[k]
+            var best = -1
+            for (i in 0 until m) if (!used[i] && (best < 0 || abs(work[i][col]) > abs(work[best][col]))) best = i
+            if (best < 0 || abs(work[best][col]) < 1e-10) return
+            used[best] = true
+            order[k] = best
+            val row = work[best]
+            val p = row[col]
+            for (j in row.indices) row[j] /= p
+            for (i in 0 until m) {
+                if (i == best) continue
+                val f = work[i][col]
+                if (f == 0.0) continue
+                val other = work[i]
+                for (j in other.indices) if (row[j] != 0.0) other[j] -= f * row[j]
+                other[col] = 0.0
+            }
+        }
+        for (k in 0 until m) work[order[k]].copyInto(tableau[k])
+    }
+
+    /** Solves B·x = b for the basis columns of [original] by Gaussian elimination with partial pivoting. */
+    private fun solveBasis(original: Array<DoubleArray>, basis: IntArray, rhsColumn: Int): DoubleArray? {
+        val m = basis.size
+        val a = Array(m) { i -> DoubleArray(m + 1).also { row -> for (k in 0 until m) row[k] = original[i][basis[k]]; row[m] = original[i][rhsColumn] } }
+        for (col in 0 until m) {
+            var pivotRow = col
+            for (i in col + 1 until m) if (abs(a[i][col]) > abs(a[pivotRow][col])) pivotRow = i
+            if (abs(a[pivotRow][col]) < 1e-12) return null
+            if (pivotRow != col) a[pivotRow] = a[col].also { a[col] = a[pivotRow] }
+            val pivot = a[col]
+            for (i in col + 1 until m) {
+                val f = a[i][col] / pivot[col]
+                if (f == 0.0) continue
+                val row = a[i]
+                for (k in col..m) row[k] -= f * pivot[k]
+            }
+        }
+        val x = DoubleArray(m)
+        for (i in m - 1 downTo 0) {
+            var v = a[i][m]
+            for (k in i + 1 until m) v -= a[i][k] * x[k]
+            x[i] = v / a[i][i]
+        }
+        return x
+    }
 
     private fun runSimplex(
         tableau: Array<DoubleArray>,
+        original: Array<DoubleArray>,
         basis: IntArray,
         cost: DoubleArray,
         totalColumns: Int,
@@ -214,7 +278,12 @@ object Simplex {
                 val row = tableau[leaving]
                 for (j in 0 until totalColumns) reduced[j] -= factor * row[j]
             }
-            if (iterations % 100 == 0) recomputeReduced()
+            if (iterations % REINVERT_EVERY == 0) {
+                reinvert(tableau, original, basis)
+                recomputeReduced()
+            } else if (iterations % 100 == 0) {
+                recomputeReduced()
+            }
         }
         return Status.ITERATION_LIMIT
     }

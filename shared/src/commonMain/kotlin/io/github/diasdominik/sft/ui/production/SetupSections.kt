@@ -3,6 +3,8 @@ package io.github.diasdominik.sft.ui.production
 import io.github.diasdominik.sft.ui.AppIcons
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,14 +37,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.diasdominik.sft.data.Constants
 import io.github.diasdominik.sft.data.GameData
+import io.github.diasdominik.sft.data.Purity
 import io.github.diasdominik.sft.data.Recipe
+import io.github.diasdominik.sft.planner.Extraction
 import io.github.diasdominik.sft.planner.InputItem
+import io.github.diasdominik.sft.planner.ResourceExtraction
 import io.github.diasdominik.sft.planner.ProductionItem
 import io.github.diasdominik.sft.planner.ProductionType
 import io.github.diasdominik.sft.state.ProductionTab
 import io.github.diasdominik.sft.ui.EntityIcon
 import io.github.diasdominik.sft.ui.EntityPickerDialog
 import io.github.diasdominik.sft.ui.NumberField
+import io.github.diasdominik.sft.ui.OptionalCountField
 import io.github.diasdominik.sft.ui.SearchField
 import io.github.diasdominik.sft.ui.fmt
 
@@ -168,9 +174,19 @@ internal fun LazyListScope.productsSection(data: GameData, tab: ProductionTab) {
     }
 }
 
+private fun ProductionTab.updateExtraction(data: GameData, resource: String, transform: (ResourceExtraction) -> ResourceExtraction) =
+    updateRequest { r ->
+        val current = Extraction.settings(data, r, resource)
+        if (current == null) r else r.copy(extraction = r.extraction + (resource to transform(current)))
+    }
+
 internal fun LazyListScope.resourcesSection(data: GameData, tab: ProductionTab) {
     item {
-        Hint("Select which raw resources may be used and their limits. Defaults are the map limits.")
+        Hint(
+            "Select which raw resources may be used and their limits. Defaults are the map limits. " +
+                "Pick the extractor, node purity and clock speed you have to see how many extractors you need, " +
+                "and enter how many nodes you can use to limit a resource to what they deliver.",
+        )
     }
     item {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -178,6 +194,7 @@ internal fun LazyListScope.resourcesSection(data: GameData, tab: ProductionTab) 
             OutlinedButton(onClick = { tab.updateRequest { r -> r.copy(resourceMax = r.resourceMax.mapValues { 0.0 }) } }) { Text("Set to 0") }
         }
     }
+    item { AllOresCard(data, tab) }
     items(data.resourceList, key = { "r" + it.item }) { resource ->
         val enabled = resource.item !in tab.request.blockedResources
         val max = tab.request.resourceMax[resource.item] ?: 0.0
@@ -200,8 +217,84 @@ internal fun LazyListScope.resourcesSection(data: GameData, tab: ProductionTab) 
                     suffix = "/min",
                 )
             }
+            if (enabled) ExtractionSettings(data, tab, resource.item)
         }
     }
+}
+
+@Composable
+private fun ExtractionSettings(data: GameData, tab: ProductionTab, resource: String) {
+    val settings = Extraction.settings(data, tab.request, resource) ?: return
+    val options = Extraction.extractors(data, resource)
+    val extractor = settings.extractor!!
+    Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        ChipRow {
+            options.forEach { b ->
+                FilterChip(extractor == b.className, { tab.updateExtraction(data, resource) { it.copy(extractor = b.className) } }, label = { Text(b.name) })
+            }
+        }
+        if (Extraction.hasPurity(extractor)) {
+            ChipRow {
+                Purity.entries.forEach { p ->
+                    FilterChip(settings.purity == p, { tab.updateExtraction(data, resource) { it.copy(purity = p) } }, label = { Text(p.label) })
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            NumberField(
+                settings.clockSpeed,
+                { v -> tab.updateExtraction(data, resource) { it.copy(clockSpeed = v.coerceIn(Extraction.MIN_CLOCK, Extraction.MAX_CLOCK)) } },
+                modifier = Modifier.weight(1f),
+                label = "Clock speed",
+                suffix = "%",
+            )
+            OptionalCountField(
+                settings.nodes,
+                { n -> tab.updateExtraction(data, resource) { it.copy(nodes = n) } },
+                modifier = Modifier.weight(1f),
+                label = "Nodes",
+                placeholder = "Any",
+            )
+        }
+        val unit = if (data.item(resource)?.liquid == true) "m³/min" else "/min"
+        val rate = Extraction.rate(data, settings)
+        Text(
+            buildString {
+                append("${fmt(rate)} $unit per extractor")
+                settings.nodes?.let { append(" · ${fmt(rate * it)} $unit from $it node${if (it == 1) "" else "s"}") }
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Sets the miner tier and purity for every ore at once. */
+@Composable
+private fun AllOresCard(data: GameData, tab: ProductionTab) {
+    val ores = data.resourceList.map { it.item }.filter { r -> Extraction.extractors(data, r).any { it.className in Constants.MINERS } }
+    val miners = Constants.MINERS.mapNotNull { data.building(it) }
+    RowCard {
+        Text("All ores", style = MaterialTheme.typography.titleSmall)
+        ChipRow {
+            miners.forEach { m ->
+                val selected = ores.all { Extraction.settings(data, tab.request, it)?.extractor == m.className }
+                FilterChip(selected, { ores.forEach { r -> tab.updateExtraction(data, r) { it.copy(extractor = m.className) } } }, label = { Text(m.name) })
+            }
+        }
+        ChipRow {
+            Purity.entries.forEach { p ->
+                val selected = ores.all { Extraction.settings(data, tab.request, it)?.purity == p }
+                FilterChip(selected, { ores.forEach { r -> tab.updateExtraction(data, r) { it.copy(purity = p) } } }, label = { Text(p.label) })
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChipRow(content: @Composable () -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { content() }
 }
 
 internal fun LazyListScope.inputsSection(data: GameData, tab: ProductionTab) {

@@ -12,6 +12,7 @@ import io.github.diasdominik.sft.data.DataLoader
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.GameVersion
 import io.github.diasdominik.sft.planner.ProductionData
+import io.github.diasdominik.sft.planner.ProductionDiagnosis
 import io.github.diasdominik.sft.planner.ProductionGraph
 import io.github.diasdominik.sft.planner.ProductionItem
 import io.github.diasdominik.sft.planner.ProductionRequest
@@ -38,6 +39,9 @@ class ProductionTab(val id: Long, initial: ProductionData, private val gameData:
     var status by mutableStateOf(ResultStatus.NO_INPUT)
         internal set
     var result by mutableStateOf<ProductionResult?>(null)
+        internal set
+    /** Why there is no result, when status is NO_RESULT. */
+    var problems by mutableStateOf<List<String>>(emptyList())
         internal set
 
     val request: ProductionRequest get() = data.request
@@ -191,10 +195,12 @@ class AppState(private val settings: SettingsStore) : ViewModel() {
                         return@collectLatest
                     }
                     tab.status = ResultStatus.CALCULATING
-                    val result = withContext(Dispatchers.Default) {
-                        solver.solve(request)?.let { ProductionResult(request, ProductionGraph.from(it), data) }
+                    val (result, problems) = withContext(Dispatchers.Default) {
+                        val result = solver.solve(request)?.let { ProductionResult(request, ProductionGraph.from(it), data) }
+                        result to if (result == null) ProductionDiagnosis(data).explain(request) else emptyList()
                     }
                     tab.result = result
+                    tab.problems = problems
                     tab.status = if (result == null) ResultStatus.NO_RESULT else ResultStatus.RESULT
                 }
         }

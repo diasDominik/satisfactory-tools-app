@@ -176,6 +176,11 @@ data class MachinePowerDetails(val amount: Int, val power: Power, val recipes: M
 data class PowerDetails(val total: Power, val byBuilding: Map<String, MachinePowerDetails>)
 
 class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, private val data: GameData) {
+    /** Extractors per mined resource. Declared first because buildings and power include them. */
+    val extraction: List<ExtractionDetails> = graph.nodes.filterIsInstance<MinerNode>()
+        .groupBy { it.item }
+        .mapNotNull { (item, nodes) -> Extraction.details(data, request, item, nodes.sumOf { it.amount }) }
+        .sortedBy { data.nameOf(it.resource) }
     val buildings: BuildingsDetails = calculateBuildings()
     val items: Map<String, ItemDetails> = calculateItems()
     val input: Map<String, InputDetails> = calculateInput(request)
@@ -201,6 +206,11 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
             counts.mergeWith(building, amount) { a, b -> a + b }
             recipesByBuilding.getOrPut(building) { LinkedHashMap() }[node.usage.recipe.className] =
                 RecipeBuildingDetails(amount, buildingCost(building, amount))
+        }
+        for (e in extraction) {
+            val building = e.extractor.className
+            counts.mergeWith(building, e.count) { a, b -> a + b }
+            recipesByBuilding.getOrPut(building) { LinkedHashMap() }[e.resource] = RecipeBuildingDetails(e.count, buildingCost(building, e.count))
         }
         val buildings = recipesByBuilding.mapValues { (building, recipes) ->
             BuildingDetails(counts.getValue(building), recipes, sumCosts(recipes.values.map { it.resources }))
@@ -320,6 +330,22 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
                     current.amount + group.count,
                     Power(current.power.average + group.power.average, current.power.max + group.power.max, current.power.isVariable || group.power.isVariable),
                     current.recipes + (node.usage.recipe.className to recipePower),
+                )
+            }
+        }
+        for (e in extraction) {
+            val machine = e.extractor.className
+            val power = Power(e.power, e.power)
+            val groups = e.groups.map { MachineGroupItem(it.amount, it.clockSpeed, Power(it.power, it.power)) }
+            val details = RecipePowerDetails(e.settings.clockSpeed.toInt(), e.count, groups, power.rounded())
+            val current = byBuilding[machine]
+            byBuilding[machine] = if (current == null) {
+                MachinePowerDetails(e.count, power, mapOf(e.resource to details))
+            } else {
+                MachinePowerDetails(
+                    current.amount + e.count,
+                    Power(current.power.average + power.average, current.power.max + power.max, current.power.isVariable),
+                    current.recipes + (e.resource to details),
                 )
             }
         }

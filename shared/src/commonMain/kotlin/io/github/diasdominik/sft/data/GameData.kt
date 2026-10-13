@@ -14,6 +14,8 @@ object Constants {
     const val WORKSHOP = "Desc_Workshop_C"
     const val WATER_EXTRACTOR = "Desc_WaterPump_C"
     const val WATER = "Desc_Water_C"
+    const val RESOURCE_WELL_EXTRACTOR = "Desc_FrackingExtractor_C"
+    val MINERS = listOf("Desc_MinerMk1_C", "Desc_MinerMk2_C", "Desc_MinerMk3_C")
     const val NUCLEAR_WASTE = "Desc_NuclearWaste_C"
     const val PLUTONIUM_WASTE = "Desc_PlutoniumWaste_C"
     const val NUCLEAR_FUEL_ROD = "Desc_NuclearFuelRod_C"

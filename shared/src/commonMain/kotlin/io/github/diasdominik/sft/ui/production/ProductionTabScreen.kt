@@ -183,7 +183,7 @@ internal fun LazyListScope.setupContent(section: SetupSection, data: GameData, t
 internal fun LazyListScope.resultContent(section: ResultSection, data: GameData, tab: ProductionTab, links: CodexLinks) {
     val result = tab.result
     if (result == null || tab.status != ResultStatus.RESULT) {
-        item { StatusMessage(tab.status) }
+        item { StatusMessage(tab.status, tab.problems) }
         return
     }
     when (section) {
