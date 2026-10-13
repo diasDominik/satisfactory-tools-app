@@ -32,7 +32,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +61,7 @@ import io.github.diasdominik.sft.ui.codex.SchematicsScreen
 import io.github.diasdominik.sft.ui.production.ProductionListScreen
 import io.github.diasdominik.sft.ui.production.ProductionTabScreen
 import kotlinx.serialization.Serializable
+import org.koin.compose.viewmodel.koinViewModel
 import kotlin.reflect.KClass
 
 @Serializable object ProductionListRoute
@@ -86,8 +86,7 @@ private val topLevels = listOf(
 @Composable
 fun App() {
     SatisfactoryTheme {
-        val scope = rememberCoroutineScope()
-        val state = remember { AppState(scope) }
+        val state = koinViewModel<AppState>()
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             val data = state.gameData
             when {

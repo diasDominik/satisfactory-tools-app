@@ -21,6 +21,8 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "SatisfactoryTools"
             packageVersion = "1.0.0"
+            // KSafe uses these for OS-backed key storage on desktop.
+            modules("jdk.unsupported", "java.management")
         }
     }
 }

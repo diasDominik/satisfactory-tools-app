@@ -5,7 +5,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import com.russhwolf.settings.Settings
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import io.github.diasdominik.sft.data.Constants
 import io.github.diasdominik.sft.data.DataLoader
 import io.github.diasdominik.sft.data.GameData
@@ -28,6 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import org.koin.core.annotation.KoinViewModel
 
 enum class ResultStatus { NO_INPUT, CALCULATING, RESULT, NO_RESULT }
 
@@ -63,11 +65,12 @@ class ProductionTab(val id: Long, initial: ProductionData, private val gameData:
     internal var job: Job? = null
 }
 
-class AppState(private val scope: CoroutineScope) {
-    private val settings: Settings = Settings()
+@KoinViewModel
+class AppState(private val settings: SettingsStore) : ViewModel() {
+    private val scope: CoroutineScope get() = viewModelScope
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    var version by mutableStateOf(GameVersion.fromId(settings.getStringOrNull(KEY_VERSION)))
+    var version by mutableStateOf(GameVersion.fromId(settings.getString(KEY_VERSION)))
         private set
     var gameData by mutableStateOf<GameData?>(null)
         private set
@@ -107,7 +110,7 @@ class AppState(private val scope: CoroutineScope) {
     }
 
     private fun restoreTabs(data: GameData) {
-        val stored = settings.getStringOrNull(tabsKey(data.version))
+        val stored = settings.getString(tabsKey(data.version))
         val list = stored?.let {
             runCatching { json.decodeFromString(ListSerializer(ProductionData.serializer()), it) }.getOrNull()
         } ?: emptyList()
