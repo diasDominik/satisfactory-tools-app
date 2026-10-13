@@ -11,6 +11,7 @@ import io.github.diasdominik.sft.data.Constants
 import io.github.diasdominik.sft.data.DataLoader
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.GameVersion
+import io.github.diasdominik.sft.planner.GraphPoint
 import io.github.diasdominik.sft.planner.ProductionData
 import io.github.diasdominik.sft.planner.ProductionDiagnosis
 import io.github.diasdominik.sft.planner.ProductionGraph
@@ -52,6 +53,19 @@ class ProductionTab(val id: Long, initial: ProductionData, private val gameData:
 
     fun rename(name: String?) {
         data = data.copy(metadata = data.metadata.copy(name = name?.takeIf { it.isNotBlank() }))
+    }
+
+    fun toggleBuilt(key: String) {
+        val built = data.metadata.built
+        data = data.copy(metadata = data.metadata.copy(built = if (key in built) built - key else built + key))
+    }
+
+    fun moveGraphNode(key: String, x: Float, y: Float) {
+        data = data.copy(metadata = data.metadata.copy(graphPositions = data.metadata.graphPositions + (key to GraphPoint(x, y))))
+    }
+
+    fun resetGraphLayout() {
+        data = data.copy(metadata = data.metadata.copy(graphPositions = emptyMap()))
     }
 
     fun setIcon(icon: String?) {

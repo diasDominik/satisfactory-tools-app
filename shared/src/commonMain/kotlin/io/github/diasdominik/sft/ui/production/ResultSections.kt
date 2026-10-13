@@ -43,7 +43,9 @@ import io.github.diasdominik.sft.planner.Power
 import io.github.diasdominik.sft.planner.ProductNode
 import io.github.diasdominik.sft.planner.ProductionResult
 import io.github.diasdominik.sft.planner.RecipeNode
+import io.github.diasdominik.sft.planner.graphNodeKey
 import io.github.diasdominik.sft.state.ProductionTab
+import androidx.compose.ui.geometry.Offset
 import io.github.diasdominik.sft.state.ResultStatus
 import io.github.diasdominik.sft.ui.AmountChips
 import io.github.diasdominik.sft.ui.EmptyState
@@ -207,10 +209,17 @@ private val InputColor = Color(0xFF8E44AD)
 private val ProductColor = Color(0xFF5CB85C)
 private val ByproductColor = Color(0xFF1B7A99)
 
-internal fun LazyListScope.graphSection(data: GameData, result: ProductionResult, links: CodexLinks) {
+internal fun LazyListScope.graphSection(data: GameData, tab: ProductionTab, result: ProductionResult, links: CodexLinks) {
     item(key = "graph") {
-        val (nodes, edges) = remember(result) { graphModel(data, result, links) }
-        GraphView(nodes, edges, height = 560.dp)
+        val built = tab.data.metadata.built.toSet()
+        val (nodes, edges) = remember(result, built) { graphModel(data, result, links, built) }
+        GraphView(
+            nodes, edges, height = 560.dp,
+            positions = tab.data.metadata.graphPositions.mapValues { Offset(it.value.x, it.value.y) },
+            onMoveNode = { key, at -> tab.moveGraphNode(key, at.x, at.y) },
+            onResetLayout = tab::resetGraphLayout,
+            onToggleDone = tab::toggleBuilt,
+        )
     }
     item(key = "graph-legend") {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -232,8 +241,11 @@ private fun Legend(color: Color, label: String) {
     }
 }
 
-private fun graphModel(data: GameData, result: ProductionResult, links: CodexLinks): Pair<List<GraphViewNode>, List<GraphViewEdge>> {
+private fun graphModel(data: GameData, result: ProductionResult, links: CodexLinks, built: Set<String>): Pair<List<GraphViewNode>, List<GraphViewEdge>> {
     val nodes = result.graph.nodes.map { node ->
+        val key = graphNodeKey(node)
+        // Machines and extractors are what gets built; products and inputs are just ends of the chain.
+        val step = node is RecipeNode || node is MinerNode
         when (node) {
             is RecipeNode -> GraphViewNode(
                 node.id,
@@ -246,11 +258,12 @@ private fun graphModel(data: GameData, result: ProductionResult, links: CodexLin
                     node.inputs.map { "IN: ${fmt(it.maxAmount)} / min ${data.nameOf(it.item)}" } +
                     node.outputs.map { "OUT: ${fmt(it.maxAmount)} / min ${data.nameOf(it.item)}" },
                 action = "Building" to { links.open(data, node.usage.machine.className) },
+                key = key, checkable = true, done = key in built,
             )
-            is MinerNode -> GraphViewNode(node.id, data.nameOf(node.item), "Mine ${fmt(node.amount)} / min", MinerColor, action = "Open" to { links.open(data, node.item) })
-            is InputNode -> GraphViewNode(node.id, data.nameOf(node.item), "Input ${fmt(node.amount)} / min", InputColor, action = "Open" to { links.open(data, node.item) })
-            is ProductNode -> GraphViewNode(node.id, data.nameOf(node.item), "Product ${fmt(node.amount)} / min", ProductColor, action = "Open" to { links.open(data, node.item) })
-            is ByproductNode -> GraphViewNode(node.id, data.nameOf(node.item), "Byproduct ${fmt(node.amount)} / min", ByproductColor, action = "Open" to { links.open(data, node.item) })
+            is MinerNode -> GraphViewNode(node.id, data.nameOf(node.item), "Mine ${fmt(node.amount)} / min", MinerColor, action = "Open" to { links.open(data, node.item) }, key = key, checkable = step, done = step && key in built)
+            is InputNode -> GraphViewNode(node.id, data.nameOf(node.item), "Input ${fmt(node.amount)} / min", InputColor, action = "Open" to { links.open(data, node.item) }, key = key, checkable = step, done = step && key in built)
+            is ProductNode -> GraphViewNode(node.id, data.nameOf(node.item), "Product ${fmt(node.amount)} / min", ProductColor, action = "Open" to { links.open(data, node.item) }, key = key, checkable = step, done = step && key in built)
+            is ByproductNode -> GraphViewNode(node.id, data.nameOf(node.item), "Byproduct ${fmt(node.amount)} / min", ByproductColor, action = "Open" to { links.open(data, node.item) }, key = key, checkable = step, done = step && key in built)
         }
     }
     // Merge parallel edges carrying the same item.

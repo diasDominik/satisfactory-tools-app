@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -27,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +70,11 @@ data class GraphViewNode(
     val color: Color,
     val details: List<String> = emptyList(),
     val action: Pair<String, () -> Unit>? = null,
+    /** Stable name for saved positions and the built mark; the id changes with every calculation. */
+    val key: String = id.toString(),
+    /** Whether this node is a step that can be marked as built. */
+    val checkable: Boolean = false,
+    val done: Boolean = false,
 )
 
 data class GraphViewEdge(val from: Int, val to: Int, val label: String = "")
@@ -153,9 +161,16 @@ fun GraphView(
     modifier: Modifier = Modifier,
     height: Dp = 480.dp,
     highlight: Int? = null,
+    /** Positions the user dragged nodes to, by [GraphViewNode.key], in dp from the layout origin. */
+    positions: Map<String, Offset> = emptyMap(),
+    /** Called when a node was dragged; null keeps nodes in place. */
+    onMoveNode: ((key: String, position: Offset) -> Unit)? = null,
+    onResetLayout: (() -> Unit)? = null,
+    onToggleDone: ((key: String) -> Unit)? = null,
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current.density
-    val graphLayout = remember(nodes, edges, density) {
+    // Keyed on the graph's shape only, so marking a node as built keeps the zoom and selection.
+    val graphLayout = remember(nodes.map { it.id }, edges, density) {
         val l = layout(nodes, edges)
         Layout(l.positions.mapValues { it.value * density }, Rect(0f, 0f, l.bounds.width * density, l.bounds.height * density))
     }
@@ -167,17 +182,33 @@ fun GraphView(
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
     var fitted by remember(graphLayout) { mutableStateOf(false) }
     var selected by remember(graphLayout) { mutableStateOf<Int?>(null) }
+    // The node being dragged and where it is now, in graph pixels.
+    var dragging by remember(graphLayout) { mutableStateOf<Pair<Int, Offset>?>(null) }
     val nodesById = remember(nodes) { nodes.associateBy { it.id } }
+    // The gesture handler outlives recompositions, so it reads these through State.
+    val currentPositions by rememberUpdatedState(positions)
+    val currentOnMoveNode by rememberUpdatedState(onMoveNode)
 
+    fun positionOf(id: Int): Offset? {
+        dragging?.let { (dragged, at) -> if (dragged == id) return at }
+        val key = nodesById[id]?.key
+        currentPositions[key]?.let { return it * density }
+        return graphLayout.positions[id]
+    }
+    fun bounds(): Rect {
+        val all = nodes.mapNotNull { positionOf(it.id) }
+        if (all.isEmpty()) return graphLayout.bounds
+        return Rect(all.minOf { it.x }, all.minOf { it.y }, all.maxOf { it.x } + nodeWidth, all.maxOf { it.y } + nodeHeight)
+    }
     fun fit() {
         if (viewSize.width == 0) return
-        val b = graphLayout.bounds
+        val b = bounds()
         val margin = 24f * density
         val s = min(viewSize.width / (b.width + margin), viewSize.height / (b.height + margin)).coerceIn(MIN_SCALE, 1.5f)
         scale = s
         offset = Offset(
-            (viewSize.width - b.width * s) / 2,
-            max(margin / 2, (viewSize.height - b.height * s) / 2),
+            (viewSize.width - b.width * s) / 2 - b.left * s,
+            max(margin / 2, (viewSize.height - b.height * s) / 2) - b.top * s,
         )
     }
     /** Zooms by [factor] keeping the graph point under [pivot] in place. */
@@ -189,9 +220,11 @@ fun GraphView(
     }
     fun nodeAt(point: Offset): Int? {
         val p = (point - offset) / scale
-        return graphLayout.positions.entries.firstOrNull { (_, pos) ->
+        // Topmost (last drawn) node first.
+        return nodes.lastOrNull { node ->
+            val pos = positionOf(node.id) ?: return@lastOrNull false
             p.x in pos.x..(pos.x + nodeWidth) && p.y in pos.y..(pos.y + nodeHeight)
-        }?.key
+        }?.id
     }
     LaunchedEffect(graphLayout, viewSize) {
         if (!fitted && viewSize.width > 0) {
@@ -204,6 +237,7 @@ fun GraphView(
     val labelColor = MaterialTheme.colorScheme.onSurface
     val labelBackground = MaterialTheme.colorScheme.surfaceContainerHighest
     val highlightColor = MaterialTheme.colorScheme.onSurface
+    val doneColor = StatusColors.success
 
     Column(modifier) {
         Box(
@@ -218,14 +252,16 @@ fun GraphView(
                         contentDescription = "Production graph"
                         stateDescription = "Zoom ${(scale * 100).roundToInt()} %"
                     }
-                    .pointerInput(graphLayout) {
+                    .pointerInput(graphLayout, onMoveNode != null) {
                         // One gesture handler for drag, pinch and taps. It consumes every touch inside the
                         // graph so the surrounding list doesn't scroll away while panning or pinching.
+                        // Dragging a node moves the node; dragging empty space moves the view.
                         var lastTapTime = 0L
                         var lastTapNode: Int? = null
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             down.consume()
+                            val grabbed = if (onMoveNode != null) nodeAt(down.position) else null
                             var moved = 0f
                             var multiTouch = false
                             while (true) {
@@ -236,11 +272,21 @@ fun GraphView(
                                 val zoom = event.calculateZoom()
                                 val pan = event.calculatePan()
                                 moved += pan.getDistance()
-                                if (zoom != 1f) zoomBy(zoom, event.calculateCentroid(useCurrent = true))
-                                if (moved > viewConfiguration.touchSlop || multiTouch) offset += pan
+                                val dragged = moved > viewConfiguration.touchSlop
+                                if (grabbed != null && !multiTouch && dragged) {
+                                    val from = dragging?.second ?: positionOf(grabbed) ?: Offset.Zero
+                                    dragging = grabbed to from + pan / scale
+                                } else {
+                                    if (zoom != 1f) zoomBy(zoom, event.calculateCentroid(useCurrent = true))
+                                    if (dragged || multiTouch) offset += pan
+                                }
                                 event.changes.forEach { it.consume() }
                             }
-                            if (!multiTouch && moved <= viewConfiguration.touchSlop) {
+                            val drop = dragging
+                            if (drop != null) {
+                                nodesById[drop.first]?.let { currentOnMoveNode?.invoke(it.key, drop.second / density) }
+                                dragging = null
+                            } else if (!multiTouch && moved <= viewConfiguration.touchSlop) {
                                 val hit = nodeAt(down.position)
                                 val now = down.uptimeMillis
                                 if (hit != null && hit == lastTapNode && now - lastTapTime < viewConfiguration.doubleTapTimeoutMillis) {
@@ -277,8 +323,8 @@ fun GraphView(
                     val d = density
                     val labelStyle = TextStyle(fontSize = 9.sp, color = labelColor)
                     for (edge in edges) {
-                        val a = graphLayout.positions[edge.from] ?: continue
-                        val b = graphLayout.positions[edge.to] ?: continue
+                        val a = positionOf(edge.from) ?: continue
+                        val b = positionOf(edge.to) ?: continue
                         val start = Offset(a.x + nodeWidth / 2, a.y + nodeHeight)
                         val end = Offset(b.x + nodeWidth / 2, b.y)
                         val path = Path()
@@ -312,10 +358,21 @@ fun GraphView(
                         }
                     }
                     for (node in nodes) {
-                        val pos = graphLayout.positions[node.id] ?: continue
-                        drawRoundRect(node.color, pos, Size(nodeWidth, nodeHeight), CornerRadius(8f * d))
-                        if (node.id == selected || node.id == highlight) {
+                        val pos = positionOf(node.id) ?: continue
+                        drawRoundRect(node.color, pos, Size(nodeWidth, nodeHeight), CornerRadius(8f * d), alpha = if (node.done) 0.55f else 1f)
+                        if (node.id == selected || node.id == highlight || node.id == dragging?.first) {
                             drawRoundRect(highlightColor, pos, Size(nodeWidth, nodeHeight), CornerRadius(8f * d), style = Stroke(2.5f * d))
+                        }
+                        if (node.done) {
+                            // Check mark badge in the top-right corner.
+                            val c = pos + Offset(nodeWidth - 2f * d, 2f * d)
+                            drawCircle(doneColor, 10f * d, c)
+                            val tick = Path().apply {
+                                moveTo(c.x - 5f * d, c.y)
+                                lineTo(c.x - 1.5f * d, c.y + 3.5f * d)
+                                lineTo(c.x + 5f * d, c.y - 3.5f * d)
+                            }
+                            drawPath(tick, Color.White, style = Stroke(2.2f * d))
                         }
                         val textColor = if (node.color.red * 0.299f + node.color.green * 0.587f + node.color.blue * 0.114f > 0.6f) Color.Black else Color.White
                         drawText(
@@ -340,7 +397,18 @@ fun GraphView(
                 FilledTonalIconButton(onClick = { zoomBy(BUTTON_ZOOM, center) }) { Icon(AppIcons.Add, contentDescription = "Zoom in") }
                 FilledTonalIconButton(onClick = { zoomBy(1 / BUTTON_ZOOM, center) }) { Icon(AppIcons.Remove, contentDescription = "Zoom out") }
                 FilledTonalIconButton(onClick = { fit() }) { Icon(AppIcons.Fit, contentDescription = "Fit graph") }
+                if (onResetLayout != null && nodes.any { it.key in positions }) {
+                    FilledTonalIconButton(onClick = onResetLayout) { Icon(AppIcons.Reset, contentDescription = "Reset layout") }
+                }
             }
+        }
+        val steps = nodes.filter { it.checkable }
+        if (onToggleDone != null && steps.isNotEmpty()) {
+            Text(
+                "${steps.count { it.done }} of ${steps.size} steps built",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 6.dp),
+            )
         }
         val node = selected?.let { nodesById[it] }
         if (node != null) {
@@ -355,11 +423,26 @@ fun GraphView(
                     }
                     if (node.subtitle.isNotEmpty()) Text(node.subtitle, style = MaterialTheme.typography.bodySmall)
                     node.details.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (onToggleDone != null && node.checkable) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 4.dp).clickable { onToggleDone(node.key) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(node.done, onCheckedChange = null)
+                            Text("Built")
+                        }
+                    }
                 }
             }
         } else {
             Text(
-                "Pinch, scroll or use + and − to zoom, drag to move, tap a node for details, double-tap to open it.",
+                buildString {
+                    append("Pinch, scroll or use + and − to zoom, drag to move")
+                    if (onMoveNode != null) append(" the view or a node")
+                    append(", tap a node for details")
+                    if (onToggleDone != null) append(" and to mark it as built")
+                    append(", double-tap to open it.")
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp),

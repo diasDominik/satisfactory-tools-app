@@ -16,7 +16,14 @@ data class ProductionMetadata(
     val icon: String? = null,
     val schemaVersion: Int = 1,
     val gameVersion: String = "0",
+    /** App-only: graph nodes marked as built, by node key (see [graphNodeKey]). */
+    val built: List<String> = emptyList(),
+    /** App-only: where graph nodes were dragged to, by node key, in dp. */
+    val graphPositions: Map<String, GraphPoint> = emptyMap(),
 )
+
+@Serializable
+data class GraphPoint(val x: Float, val y: Float)
 
 object ProductionType {
     const val PER_MINUTE = "perMinute"

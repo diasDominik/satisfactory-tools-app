@@ -21,6 +21,14 @@ import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.swipe
+import io.github.diasdominik.sft.planner.GraphPoint
+import io.github.diasdominik.sft.planner.ProductionData
+import io.github.diasdominik.sft.planner.ProductionMetadata
+import io.github.diasdominik.sft.planner.SftFormat
 import io.github.diasdominik.sft.ui.GraphView
 import io.github.diasdominik.sft.ui.GraphViewEdge
 import io.github.diasdominik.sft.ui.GraphViewNode
@@ -106,5 +114,61 @@ class GraphViewTest {
         waitForIdle()
         assertEquals(0, listState!!.firstVisibleItemIndex)
         assertEquals(0, listState!!.firstVisibleItemScrollOffset)
+    }
+
+    @Test
+    fun draggingANodeMovesIt() = runComposeUiTest {
+        val moves = mutableListOf<Pair<String, Offset>>()
+        setContent { SatisfactoryTheme { GraphView(nodes, edges, onMoveNode = { key, at -> moves += key to at }) } }
+        onNodeWithContentDescription("Fit graph").performClick()
+        val graph = onNodeWithContentDescription("Production graph")
+        val zoom = graph.zoom
+        // The middle node (Iron Ingot) sits in the centre; drag it to the right.
+        graph.performTouchInput { swipe(center, center + Offset(200f, 0f), durationMillis = 300) }
+        val (key, at) = moves.single()
+        assertEquals("2", key)
+        assertTrue(at.x > 40f, "moved to $at")
+        // Moving a node is not a zoom.
+        assertEquals(zoom, graph.zoom)
+    }
+
+    @Test
+    fun draggingEmptySpaceMovesTheViewNotANode() = runComposeUiTest {
+        val moves = mutableListOf<String>()
+        setContent { SatisfactoryTheme { GraphView(nodes, edges, onMoveNode = { key, _ -> moves += key }) } }
+        onNodeWithContentDescription("Production graph").performTouchInput { swipe(Offset(5f, 5f), Offset(150f, 150f), durationMillis = 300) }
+        assertTrue(moves.isEmpty(), "moved $moves")
+    }
+
+    @Test
+    fun aNodeCanBeMarkedAsBuilt() = runComposeUiTest {
+        var steps by mutableStateOf(nodes.map { it.copy(checkable = true) })
+        val toggled = mutableListOf<String>()
+        setContent {
+            SatisfactoryTheme {
+                GraphView(steps, edges, onToggleDone = { key ->
+                    toggled += key
+                    steps = steps.map { if (it.key == key) it.copy(done = !it.done) else it }
+                })
+            }
+        }
+        onNodeWithText("0 of 3 steps built").assertIsDisplayed()
+        onNodeWithContentDescription("Fit graph").performClick()
+        onNodeWithContentDescription("Production graph").performTouchInput { click(center) }
+        onNodeWithText("Built").performClick()
+        assertEquals(listOf("2"), toggled)
+        onNodeWithText("1 of 3 steps built").assertIsDisplayed()
+        // The details stay open after marking, so it can be undone right away.
+        onNodeWithText("Needed power: 4 MW").assertIsDisplayed()
+    }
+
+    @Test
+    fun builtMarksAndPositionsSurviveExport() {
+        val data = ProductionData(
+            metadata = ProductionMetadata(built = listOf("Recipe_IronRod_C"), graphPositions = mapOf("mine:Desc_OreIron_C" to GraphPoint(10f, 20f))),
+        )
+        val back = SftFormat.import(SftFormat.export(listOf(data), listOf("Rods"))).single().metadata
+        assertEquals(listOf("Recipe_IronRod_C"), back.built)
+        assertEquals(GraphPoint(10f, 20f), back.graphPositions["mine:Desc_OreIron_C"])
     }
 }

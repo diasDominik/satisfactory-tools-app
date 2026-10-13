@@ -195,7 +195,7 @@ internal fun LazyListScope.resultContent(section: ResultSection, data: GameData,
     }
     when (section) {
         ResultSection.OVERVIEW -> overviewSection(data, tab, result, links)
-        ResultSection.GRAPH -> graphSection(data, result, links)
+        ResultSection.GRAPH -> graphSection(data, tab, result, links)
         ResultSection.ITEMS -> itemsSection(data, result, links)
         ResultSection.BUILDINGS -> buildingsSection(data, result, links)
         ResultSection.POWER -> powerSection(data, result, links)

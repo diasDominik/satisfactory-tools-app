@@ -42,6 +42,15 @@ class ByproductNode(val item: String, val amount: Double) : GraphNode() {
     override val inputs = listOf(ResourceAmount(item, amount, 0.0))
 }
 
+/** Stable name of a node across recalculations, used for saved graph positions and built marks. */
+fun graphNodeKey(node: GraphNode): String = when (node) {
+    is RecipeNode -> node.usage.recipe.className
+    is MinerNode -> "mine:" + node.item
+    is InputNode -> "input:" + node.item
+    is ProductNode -> "product:" + node.item
+    is ByproductNode -> "byproduct:" + node.item
+}
+
 class GraphEdge(val from: GraphNode, val to: GraphNode, val item: String, val amount: Double) {
     var id: Int = 0
 }
