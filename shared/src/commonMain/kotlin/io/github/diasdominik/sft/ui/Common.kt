@@ -55,53 +55,10 @@ import io.github.diasdominik.sft.planner.Numbers
 
 fun fmt(value: Double, decimals: Int = 3) = Numbers.format(value, decimals)
 
-private val iconPalette = listOf(
-    Color(0xFFB85C1E), Color(0xFF3F7CAC), Color(0xFF5C8A3A), Color(0xFF8A4F9E), Color(0xFF9E7A2F),
-    Color(0xFF2F8A86), Color(0xFFA0434E), Color(0xFF5D6B7A), Color(0xFF7A5C3A), Color(0xFF4A5DA8),
-)
-
-/**
- * Placeholder icon. The game's icons are Coffee Stain's and may not be redistributed by
- * derivative works, so entities are drawn as a coloured tile with their initials.
- */
+/** Icon for an item, building or schematic; see [GameIcon]. */
 @Composable
 fun EntityIcon(data: GameData?, className: String?, size: Dp = 32.dp, modifier: Modifier = Modifier) {
-    val name = className?.let { data?.nameOf(it) } ?: "?"
-    val item = className?.let { data?.item(it) }
-    val color = when {
-        item != null && item.liquid && item.fluidColor.let { it.r + it.g + it.b } > 0 ->
-            Color(item.fluidColor.r, item.fluidColor.g, item.fluidColor.b)
-        className == null -> MaterialTheme.colorScheme.surfaceVariant
-        else -> iconPalette[(className.hashCode() and 0x7fffffff) % iconPalette.size]
-    }
-    val initials = initialsOf(name)
-    val textColor = if (color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f > 0.6f) Color.Black else Color.White
-    val isBuilding = className != null && data?.building(className) != null && item == null
-    Box(
-        modifier
-            .size(size)
-            .clip(if (item?.liquid == true) RoundedCornerShape(50) else RoundedCornerShape(size / 5))
-            .background(color)
-            .then(if (isBuilding) Modifier.border(2.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(size / 5)) else Modifier),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            initials,
-            color = textColor,
-            fontSize = (size.value * 0.36f).sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-        )
-    }
-}
-
-private fun initialsOf(name: String): String {
-    val words = name.replace(Regex("[^A-Za-z0-9 ]"), " ").split(' ').filter { it.isNotBlank() }
-    return when {
-        words.isEmpty() -> "?"
-        words.size == 1 -> words[0].take(2)
-        else -> words.take(2).joinToString("") { it.take(1) }
-    }.uppercase()
+    GameIcon(data, className, size, modifier)
 }
 
 @Composable

@@ -19,6 +19,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests
         run: ./gradlew :shared:jvmTest --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: icon-sheet
+          path: shared/build/icon-sheet.png
       - name: Android debug APK
         run: ./gradlew :androidApp:assembleDebug --stacktrace
       - name: Desktop app
