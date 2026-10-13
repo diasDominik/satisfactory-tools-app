@@ -45,3 +45,25 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: iOS simulator build
         run: cd iosApp && xcodebuild -scheme iosApp -configuration Debug -sdk iphonesimulator -arch arm64 CODE_SIGNING_ALLOWED='NO'
+
+  desktop-installers:
+    name: Desktop installer (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ macos-latest, windows-latest, ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Package
+        shell: bash
+        run: ./gradlew :desktopApp:packageDistributionForCurrentOS --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: satisfactory-tools-desktop-${{ runner.os }}
+          path: desktopApp/build/compose/binaries/main/*/*
