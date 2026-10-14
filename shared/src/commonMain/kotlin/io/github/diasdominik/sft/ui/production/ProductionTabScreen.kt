@@ -52,6 +52,7 @@ enum class SetupSection(val label: String) {
 enum class ResultSection(val label: String) {
     OVERVIEW("Overview"),
     GRAPH("Visualization"),
+    LAYOUT("Layout"),
     ITEMS("Items"),
     BUILDINGS("Buildings"),
     POWER("Power"),
@@ -199,6 +200,7 @@ internal fun LazyListScope.resultContent(section: ResultSection, data: GameData,
     when (section) {
         ResultSection.OVERVIEW -> overviewSection(data, tab, result, links)
         ResultSection.GRAPH -> graphSection(data, tab, result, links)
+        ResultSection.LAYOUT -> layoutSection(data, tab, result)
         ResultSection.ITEMS -> itemsSection(data, result, links)
         ResultSection.BUILDINGS -> buildingsSection(data, result, links)
         ResultSection.POWER -> powerSection(data, result, links)

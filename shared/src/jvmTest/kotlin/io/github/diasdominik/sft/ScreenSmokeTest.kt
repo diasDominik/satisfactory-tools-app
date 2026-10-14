@@ -15,6 +15,13 @@ import io.github.diasdominik.sft.ui.codex.ItemsScreen
 import io.github.diasdominik.sft.ui.codex.SchematicDetailScreen
 import io.github.diasdominik.sft.ui.codex.SchematicsScreen
 import io.github.diasdominik.sft.ui.power.PowerPlannerScreen
+import io.github.diasdominik.sft.ui.production.FactoryLayoutView
+import io.github.diasdominik.sft.planner.FactoryLayoutPlanner
+import io.github.diasdominik.sft.planner.ProductionGraph
+import io.github.diasdominik.sft.planner.ProductionItem
+import io.github.diasdominik.sft.planner.ProductionRequest
+import io.github.diasdominik.sft.planner.ProductionResult
+import io.github.diasdominik.sft.planner.ProductionSolver
 import java.io.File
 import kotlin.test.Test
 
@@ -40,5 +47,11 @@ class ScreenSmokeTest {
     @Test fun building() = render { BuildingDetailScreen(data, data.buildingBySlug("constructor")!!, links, onBack = {}) }
     @Test fun schematic() = render { SchematicDetailScreen(data, data.schematics.values.first(), links, onBack = {}) }
     @Test fun about() = render { AboutScreen(onBack = {}) }
+    @Test fun layout() {
+        val request = ProductionRequest(production = listOf(ProductionItem("Desc_IronPlateReinforced_C", amount = 5.0)))
+        val result = ProductionResult(request, ProductionGraph.from(ProductionSolver(data).solve(request)!!), data)
+        val plan = FactoryLayoutPlanner.plan(data, result, beltTier = 3, pipeTier = 1)
+        render { FactoryLayoutView(data, plan) }
+    }
     @Test fun power() = render { PowerPlannerScreen(data, onPlanFuel = { _, _, _ -> }, actions = {}) }
 }
