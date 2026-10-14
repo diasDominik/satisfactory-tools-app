@@ -75,8 +75,9 @@ internal fun FactoryLayoutView(data: GameData, plan: FactoryLayout, modifier: Mo
     val margin = 14.0
     val minX = plan.left - margin
     val maxX = plan.width + 60.0
-    val minY = -margin
-    val maxY = plan.length + margin
+    // Room for the resource names above the plan and the product names below it.
+    val minY = -margin - 30.0
+    val maxY = plan.length + margin + 30.0
 
     fun fit() {
         if (viewSize.width == 0) return
@@ -151,8 +152,8 @@ internal fun FactoryLayoutView(data: GameData, plan: FactoryLayout, modifier: Mo
                     val color = if (belt.lines > 1) OverloadColor else if (belt.fluid) PipeColor else BeltColor
                     drawLine(color, p(belt.laneX, belt.top), p(belt.laneX, belt.bottom), strokeWidth = beltWidth)
                     (belt.fromYs + belt.toYs).forEach { y -> drawLine(color, p(belt.laneX, y), p(0.0, y), strokeWidth = beltWidth) }
-                    if (belt.fromYs.isEmpty()) label(measurer, data.nameOf(belt.item), p(belt.laneX, belt.top) - Offset(0f, 2f * m), m, rotate = true)
-                    if (belt.toYs.isEmpty()) label(measurer, data.nameOf(belt.item), p(belt.laneX, belt.bottom) + Offset(0f, 0.5f * m), m, rotate = true)
+                    if (belt.fromYs.isEmpty()) label(measurer, data.nameOf(belt.item), p(belt.laneX, belt.top) - Offset(0f, 1f * m), m, rotation = -90f)
+                    if (belt.toYs.isEmpty()) label(measurer, data.nameOf(belt.item), p(belt.laneX, belt.bottom) + Offset(0f, 1f * m), m, rotation = 90f)
                 }
                 // Rows.
                 for (row in plan.rows) {
@@ -174,7 +175,7 @@ internal fun FactoryLayoutView(data: GameData, plan: FactoryLayout, modifier: Mo
                 }
                 for (c in plan.connectors) {
                     val center = p(c.x, c.y)
-                    val s = 1.6f * m
+                    val s = 2.4f * m
                     when (c.kind) {
                         ConnectorKind.SPLITTER -> drawRect(SplitterColor, center - Offset(s / 2, s / 2), Size(s, s))
                         ConnectorKind.MERGER -> drawRect(MergerColor, center - Offset(s / 2, s / 2), Size(s, s))
@@ -197,13 +198,13 @@ private fun DrawScope.label(
     text: String,
     at: Offset,
     metre: Float,
-    rotate: Boolean = false,
+    rotation: Float = 0f,
 ) {
     val measured = measurer.measure(text, TextStyle(fontSize = 11.sp, color = Color(0xFFE6E6E6), fontWeight = FontWeight.Medium))
     val h = measured.size.height.toFloat()
     val w = measured.size.width.toFloat()
-    if (rotate) {
-        withTransform({ rotate(-90f, at) }) {
+    if (rotation != 0f) {
+        withTransform({ rotate(rotation, at) }) {
             drawRect(Color(0xAA1C2024), at - Offset(0f, h / 2), Size(w, h))
             drawText(measured, topLeft = at - Offset(0f, h / 2))
         }
