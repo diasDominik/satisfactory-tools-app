@@ -28,6 +28,22 @@ data class FactoryLayout(
     val mergers: Int get() = connectors.count { it.kind == ConnectorKind.MERGER }
     val junctions: Int get() = connectors.count { it.kind == ConnectorKind.JUNCTION }
 
+    /** Belt (or pipe) length in metres, along the rows, to each building and on the bus. */
+    fun length(fluid: Boolean): Double {
+        var total = 0.0
+        for (row in rows) for (lane in row.lanes) {
+            if (lane.fluid != fluid) continue
+            total += row.width
+            val end = if (lane.input) row.machineY else row.machineY + row.machineLength
+            total += row.count * kotlin.math.abs(end - lane.y)
+        }
+        for (belt in belts) {
+            if (belt.fluid != fluid) continue
+            total += (belt.bottom - belt.top) + (belt.fromYs.size + belt.toYs.size) * -belt.laneX
+        }
+        return total
+    }
+
     companion object {
         const val FOUNDATION = 8.0
     }

@@ -16,6 +16,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Somersloops, belt and pipe capacity, the power plant planner and linked lines. */
 class CalculatorFeaturesTest {
@@ -119,5 +120,98 @@ class CalculatorFeaturesTest {
 
     private companion object {
         const val CONSTRUCTOR = "Desc_ConstructorMk1_C"
+    }
+}
+
+class HardDriveAdvisorTest {
+    private val data = DataLoader.parse(GameVersion.V1_0, File("src/commonMain/composeResources/files/data1.0.json").readText())
+
+    @Test
+    fun ranksAlternatesByWhatTheySaveInYourLines() {
+        val lines = listOf(
+            "Wire" to ProductionRequest(production = listOf(ProductionItem("Desc_Wire_C", amount = 120.0))),
+            "Screws" to ProductionRequest(production = listOf(ProductionItem("Desc_IronScrew_C", amount = 120.0))),
+        )
+        // Cast Screw skips the Iron Rods; Iron Wire swaps copper for iron. Whichever saves more weighted
+        // resources ranks first.
+        val ranked = io.github.diasdominik.sft.planner.HardDriveAdvisor.evaluate(
+            data, lines, listOf("Recipe_Alternate_Screw_C", "Recipe_Alternate_Wire_1_C"),
+        )
+        assertEquals(2, ranked.size)
+        assertTrue(ranked[0].scoreSaved >= ranked[1].scoreSaved)
+        val screw = ranked.first { it.recipe == "Recipe_Alternate_Screw_C" }
+        // Only the screw line changes.
+        assertEquals(1, screw.linesImproved)
+        assertTrue(screw.buildingsSaved > 0, "Cast Screw needs no rod Constructors")
+    }
+
+    @Test
+    fun alreadyAllowedAlternatesAreSkipped() {
+        val lines = listOf("Screws" to ProductionRequest(
+            production = listOf(ProductionItem("Desc_IronScrew_C", amount = 60.0)),
+            allowedAlternateRecipes = listOf("Recipe_Alternate_Screw_C"),
+        ))
+        val ranked = io.github.diasdominik.sft.planner.HardDriveAdvisor.evaluate(data, lines, listOf("Recipe_Alternate_Screw_C"))
+        assertTrue(ranked.single().lines.isEmpty())
+    }
+}
+
+class BoostAndBuildTest {
+    private val data = DataLoader.parse(GameVersion.V1_0, File("src/commonMain/composeResources/files/data1.0.json").readText())
+    private val rip = ProductionRequest(production = listOf(ProductionItem("Desc_IronPlateReinforced_C", amount = 10.0)))
+
+    private fun result(request: ProductionRequest) =
+        ProductionResult(request, ProductionGraph.from(ProductionSolver(data).solve(request)!!), data)
+
+    @Test
+    fun somersloopsGoWhereTheySaveMostWithinBudget() {
+        val plan = io.github.diasdominik.sft.planner.BoostOptimizer.optimize(data, rip, somersloops = 4, shards = 0)!!
+        assertTrue(plan.somersloopsUsed in 1..4, "used ${plan.somersloopsUsed}")
+        assertTrue(plan.after.resourceScore < plan.before.resourceScore)
+        assertTrue(plan.amplifiedRecipes.isNotEmpty())
+    }
+
+    @Test
+    fun shardsSaveBuildingsWithinBudget() {
+        val plan = io.github.diasdominik.sft.planner.BoostOptimizer.optimize(data, rip, somersloops = 0, shards = 6)!!
+        assertTrue(plan.shardsUsed in 1..6)
+        assertTrue(plan.after.buildings < plan.before.buildings)
+        // The shards the plan needs match what the optimizer spent.
+        val applied = rip.copy(recipeClockSpeed = plan.recipeClockSpeed)
+        assertEquals(plan.shardsUsed, result(applied).powerShards)
+    }
+
+    @Test
+    fun overclockedCounts() {
+        // 2.4 machines at 250 %: one building at 240 %, which needs 3 shards.
+        assertEquals(1 to 3, io.github.diasdominik.sft.planner.BoostOptimizer.overclocked(2.4, 250.0))
+        assertEquals(2 to 2, io.github.diasdominik.sft.planner.BoostOptimizer.overclocked(3.0, 150.0))
+    }
+
+    @Test
+    fun shoppingListCoversBuildingsAndLogistics() {
+        val r = result(rip)
+        val layout = io.github.diasdominik.sft.planner.FactoryLayoutPlanner.plan(data, r, 3, 1)
+        val list = io.github.diasdominik.sft.planner.ShoppingList.build(data, r, layout, 3, 1)
+        val counts = list.entries.associate { it.building to it.count }
+        assertEquals(layout.splitters, counts[io.github.diasdominik.sft.planner.ShoppingList.SPLITTER] ?: 0)
+        assertEquals(layout.mergers, counts[io.github.diasdominik.sft.planner.ShoppingList.MERGER] ?: 0)
+        assertEquals(r.buildings.buildings.getValue("Desc_SmelterMk1_C").amount, counts["Desc_SmelterMk1_C"])
+        assertTrue(list.beltMetres > 0)
+        assertEquals(0.0, list.pipeMetres)
+        // A Smelter costs 5 Iron Rods and 8 Wire, so the total includes them.
+        assertTrue((list.materials["Desc_Wire_C"] ?: 0.0) >= 8.0)
+    }
+
+    @Test
+    fun upgradeShowsWhatToChange() {
+        val before = result(rip)
+        val built = io.github.diasdominik.sft.planner.BuildDiff.snapshot(before)
+        assertTrue(io.github.diasdominik.sft.planner.BuildDiff.changes(built, before).isEmpty())
+        // Unlocking Cast Screw removes the rod and screw Constructors for screws and adds a new row.
+        val after = result(rip.copy(allowedAlternateRecipes = listOf("Recipe_Alternate_Screw_C")))
+        val changes = io.github.diasdominik.sft.planner.BuildDiff.changes(built, after)
+        assertTrue(changes.any { it.isRemoved && it.key == "Recipe_Screw_C" })
+        assertTrue(changes.any { it.isNew && it.key == "Recipe_Alternate_Screw_C" })
     }
 }

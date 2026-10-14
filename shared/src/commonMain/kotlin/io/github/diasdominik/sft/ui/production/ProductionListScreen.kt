@@ -66,6 +66,7 @@ fun ProductionListScreen(
     state: AppState,
     data: GameData,
     onOpen: (Long) -> Unit,
+    onHardDrive: () -> Unit = {},
     actions: @Composable () -> Unit,
 ) {
     val selected = remember { mutableStateListOf<Long>() }
@@ -95,6 +96,7 @@ fun ProductionListScreen(
                 TopAppBar(
                     title = { Text("Production lines") },
                     actions = {
+                        IconButton(onClick = onHardDrive) { Icon(AppIcons.HardDrive, contentDescription = "Hard drive choice") }
                         IconButton(onClick = { showImport = true }) { Icon(AppIcons.Import, contentDescription = "Import") }
                         if (state.tabs.isNotEmpty()) {
                             IconButton(onClick = { share("Satisfactory Tools export", exportTabs(state.tabs.toList())) }) {

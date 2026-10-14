@@ -47,6 +47,7 @@ internal fun LazyListScope.layoutSection(data: GameData, tab: ProductionTab, res
         LayoutLegend()
         FactoryLayoutView(data, plan, Modifier.padding(top = 6.dp))
         LayoutSummary(data, plan)
+        ShoppingListCard(data, result, plan, metadata.beltTier, metadata.pipeTier)
     }
 }
 

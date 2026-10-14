@@ -22,4 +22,7 @@ object Somersloop {
     const val POWER_FACTOR = 4.0
 
     fun slots(machine: String): Int = SLOTS[machine] ?: 0
+
+    /** Power Shards a building needs for [clockSpeed]: each one allows 50 % more, up to 250 %. */
+    fun shardsFor(clockSpeed: Double): Int = if (clockSpeed <= 100.0 + 1e-9) 0 else kotlin.math.ceil((clockSpeed - 100.0) / 50.0 - 1e-9).toInt()
 }

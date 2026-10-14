@@ -25,7 +25,15 @@ data class ProductionMetadata(
     /** App-only: best belt (Mk.1–6) and pipe (Mk.1–2) the player has, for capacity warnings. */
     val beltTier: Int = Logistics.BELT_SPEEDS.size,
     val pipeTier: Int = Logistics.PIPE_SPEEDS.size,
+    /** App-only: the Somersloops and Power Shards the player has, for the optimizer. */
+    val somersloopsOwned: Int = 0,
+    val powerShardsOwned: Int = 0,
+    /** App-only: what was built when the player last marked the plan as built, by node key. */
+    val builtPlan: Map<String, BuiltStep> = emptyMap(),
 )
+
+@Serializable
+data class BuiltStep(val name: String, val machine: String, val count: Int, val clockSpeed: Double = 100.0, val somersloops: Int = 0)
 
 @Serializable
 data class GraphPoint(val x: Float, val y: Float)
@@ -70,14 +78,16 @@ data class ProductionRequest(
     /** App-only: buildings and recipes with every Somersloop slot filled (Production Amplifier). */
     val amplifiedMachines: List<String> = emptyList(),
     val amplifiedRecipes: List<String> = emptyList(),
+    /** App-only: clock speed per recipe, e.g. from the Power Shard optimizer; wins over the building's. */
+    val recipeClockSpeed: Map<String, Double> = emptyMap(),
 ) {
     /** Whether [recipe] runs in [machine] with every Somersloop slot filled. */
     fun isAmplified(recipe: String, machine: String): Boolean =
         Somersloop.slots(machine) > 0 && (recipe in amplifiedRecipes || machine in amplifiedMachines)
 
     /** Clock speed the planner runs [machine] at, kept within what the game allows. */
-    fun clockSpeedFor(machine: String): Double =
-        (machineClockSpeed[machine] ?: clockSpeed).coerceIn(MIN_CLOCK_SPEED, MAX_CLOCK_SPEED)
+    fun clockSpeedFor(machine: String, recipe: String? = null): Double =
+        (recipe?.let { recipeClockSpeed[it] } ?: machineClockSpeed[machine] ?: clockSpeed).coerceIn(MIN_CLOCK_SPEED, MAX_CLOCK_SPEED)
 
     companion object {
         const val MIN_CLOCK_SPEED = 1.0

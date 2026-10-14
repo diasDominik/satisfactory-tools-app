@@ -52,6 +52,7 @@ object AppIcons {
     val Factory by lazy { icon("Factory", "M3 21V11l5 3v-3l5 3V4h4v17zM3 21h18") }
     val Items by lazy { icon("Items", "M12 3l4 7H8z", circle(7f, 17f, 3.5f), "M14 14h7v7h-7z") }
     val Flask by lazy { icon("Flask", "M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3M7.5 15h9") }
+    val HardDrive by lazy { icon("HardDrive", "M4 6h16v12H4zM4 14h16", dot(16.5f, 16.2f, 1f), dot(13.5f, 16.2f, 1f)) }
     val Bolt by lazy { icon("Bolt", "M13 2L4 14h7l-1 8 9-12h-7z") }
     val Drill by lazy { icon("Drill", "M8 3h8v5l-2 3v4l-2 6-2-6v-4l-2-3zM8 8h8") }
     val Drop by lazy { icon("Drop", "M12 3c3.5 4.5 6 7.7 6 11a6 6 0 0 1-12 0c0-3.3 2.5-6.5 6-11z") }

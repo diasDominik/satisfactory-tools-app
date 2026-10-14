@@ -12,6 +12,8 @@ import io.github.diasdominik.sft.data.DataLoader
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.GameVersion
 import io.github.diasdominik.sft.icons.IconStore
+import io.github.diasdominik.sft.planner.BoostPlan
+import io.github.diasdominik.sft.planner.BuildDiff
 import io.github.diasdominik.sft.planner.GraphPoint
 import io.github.diasdominik.sft.planner.InputItem
 import io.github.diasdominik.sft.planner.ProductionData
@@ -104,6 +106,19 @@ class ProductionTab(val id: Long, initial: ProductionData, private val gameData:
             return out
         }
 
+    fun setOwned(somersloops: Int = data.metadata.somersloopsOwned, shards: Int = data.metadata.powerShardsOwned) {
+        data = data.copy(metadata = data.metadata.copy(somersloopsOwned = somersloops, powerShardsOwned = shards))
+    }
+
+    /** Remembers the current plan as what's built, so later changes show as an upgrade. */
+    fun markPlanBuilt(result: ProductionResult) {
+        data = data.copy(metadata = data.metadata.copy(builtPlan = BuildDiff.snapshot(result)))
+    }
+
+    fun applyBoost(plan: BoostPlan) {
+        updateRequest { r -> r.copy(amplifiedRecipes = plan.amplifiedRecipes, amplifiedMachines = emptyList(), recipeClockSpeed = plan.recipeClockSpeed) }
+    }
+
     fun setIcon(icon: String?) {
         data = data.copy(metadata = data.metadata.copy(icon = icon))
     }
@@ -166,6 +181,14 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
             } catch (e: Throwable) {
                 loadError = e.message ?: e.toString()
             }
+        }
+    }
+
+    /** Adds [recipe] to the unlocked alternates and enables it in every production line. */
+    fun unlockAlternate(recipe: String) {
+        saveUnlockedAlternates((unlockedAlternates.orEmpty() + recipe).distinct())
+        tabs.forEach { tab ->
+            if (recipe !in tab.request.allowedAlternateRecipes) tab.updateRequest { r -> r.copy(allowedAlternateRecipes = r.allowedAlternateRecipes + recipe) }
         }
     }
 

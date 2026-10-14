@@ -143,6 +143,9 @@ class MachineGroup(private val usage: RecipeUsage) {
 
     val count: Int get() = machines.sumOf { it.amount }
 
+    /** Power Shards these machines need: one per 50 % above 100 %. */
+    val powerShards: Int get() = machines.sumOf { it.amount * Somersloop.shardsFor(it.clockSpeed) }
+
     /** Somersloops slotted into these machines. */
     val somersloops: Int get() = if (usage.amplified) count * Somersloop.slots(usage.machine.className) else 0
 
@@ -207,6 +210,9 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
     val power: PowerDetails = calculatePower()
     /** Somersloops the plan slots into Production Amplifier buildings. */
     val somersloops: Int = graph.nodes.filterIsInstance<RecipeNode>().sumOf { it.machines.somersloops }
+    /** Power Shards needed by overclocked production buildings and extractors. */
+    val powerShards: Int = graph.nodes.filterIsInstance<RecipeNode>().sumOf { it.machines.powerShards } +
+        extraction.sumOf { e -> e.groups.sumOf { it.amount * Somersloop.shardsFor(it.clockSpeed) } }
 
     private inline fun <reified T : GraphNode> sumNodes(pair: (T) -> Pair<String, Double>): Map<String, Double> {
         val result = LinkedHashMap<String, Double>()

@@ -108,6 +108,7 @@ private fun AmountRow(data: GameData, className: String, value: String, sub: Str
 private fun unit(data: GameData, item: String) = if (data.item(item)?.liquid == true) "m³/min" else "/min"
 
 internal fun LazyListScope.overviewSection(data: GameData, tab: ProductionTab, result: ProductionResult, links: CodexLinks) {
+    upgradeSection(data, tab, result)
     if (result.input.isNotEmpty()) {
         item(key = "ov-input") {
             SectionCard("Input") {
@@ -197,6 +198,14 @@ internal fun LazyListScope.overviewSection(data: GameData, tab: ProductionTab, r
     item(key = "ov-power") {
         SectionCard("Power") {
             Text(result.power.total.text(), style = MaterialTheme.typography.headlineSmall)
+        }
+    }
+    boostSection(data, tab)
+    if (result.powerShards > 0) {
+        item(key = "ov-shards") {
+            SectionCard("Power Shards", actions = { Text("Total: ${result.powerShards}", modifier = Modifier.padding(end = 8.dp)) }) {
+                Text("Overclocked buildings need one Power Shard per 50 % above 100 %.", style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
     if (result.somersloops > 0) {

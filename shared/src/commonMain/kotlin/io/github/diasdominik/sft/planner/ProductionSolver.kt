@@ -146,7 +146,7 @@ class ProductionSolver(private val data: GameData) {
             val amount = clean(solution[variable])
             val machine = data.machineFor(recipe)!!
             if (amount <= 0) return@mapNotNull null
-            RecipeUsage(recipe, machine, amount, request.clockSpeedFor(machine.className), request.isAmplified(recipe.className, machine.className))
+            RecipeUsage(recipe, machine, amount, request.clockSpeedFor(machine.className, recipe.className), request.isAmplified(recipe.className, machine.className))
         }
         val mined = resourceVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
         val inputs = inputVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
