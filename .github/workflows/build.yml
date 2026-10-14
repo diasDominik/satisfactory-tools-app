@@ -23,7 +23,9 @@ jobs:
         if: always()
         with:
           name: icon-sheet
-          path: shared/build/icon-sheet.png
+          path: |
+            shared/build/icon-sheet.png
+            shared/build/layout.png
       - name: Android debug APK
         run: ./gradlew :androidApp:assembleDebug --stacktrace
       - name: Desktop app

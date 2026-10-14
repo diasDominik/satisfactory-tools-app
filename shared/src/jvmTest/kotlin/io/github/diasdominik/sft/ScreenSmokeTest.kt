@@ -51,7 +51,13 @@ class ScreenSmokeTest {
         val request = ProductionRequest(production = listOf(ProductionItem("Desc_IronPlateReinforced_C", amount = 5.0)))
         val result = ProductionResult(request, ProductionGraph.from(ProductionSolver(data).solve(request)!!), data)
         val plan = FactoryLayoutPlanner.plan(data, result, beltTier = 3, pipeTier = 1)
-        render { FactoryLayoutView(data, plan) }
+        // Also saved as build/layout.png (a CI artifact) to review the drawing.
+        ImageComposeScene(900, 700) { SatisfactoryTheme { FactoryLayoutView(data, plan) } }.use { scene ->
+            scene.render()
+            val image = scene.render(nanoTime = 1_000_000_000L)
+            File("build").mkdirs()
+            File("build/layout.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+        }
     }
     @Test fun power() = render { PowerPlannerScreen(data, onPlanFuel = { _, _, _ -> }, actions = {}) }
 }
