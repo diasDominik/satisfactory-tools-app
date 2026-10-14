@@ -22,6 +22,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,6 +51,7 @@ import io.github.diasdominik.sft.ui.codex.ItemDetailScreen
 import io.github.diasdominik.sft.ui.codex.ItemsScreen
 import io.github.diasdominik.sft.ui.codex.SchematicDetailScreen
 import io.github.diasdominik.sft.ui.codex.SchematicsScreen
+import io.github.diasdominik.sft.icons.LocalIconStore
 import io.github.diasdominik.sft.ui.power.PowerPlannerScreen
 import io.github.diasdominik.sft.ui.production.ProductionListScreen
 import io.github.diasdominik.sft.ui.production.ProductionTabScreen
@@ -118,7 +120,7 @@ fun App() {
                         Text("Loading ${state.version.label} data…")
                     }
                 }
-                else -> MainContent(state, data)
+                else -> CompositionLocalProvider(LocalIconStore provides state.icons) { MainContent(state, data) }
             }
         }
     }
@@ -240,6 +242,17 @@ private fun AppMenu(state: AppState, onAbout: () -> Unit) {
             )
         }
         HorizontalDivider()
+        val data = state.gameData
+        val progress = state.icons.progress
+        DropdownMenuItem(
+            text = { Text(if (progress != null) "Downloading icons ${progress.done} of ${progress.total}" else "Download game icons again") },
+            leadingIcon = { Icon(AppIcons.Import, null) },
+            enabled = progress == null && data != null,
+            onClick = {
+                open = false
+                state.redownloadIcons()
+            },
+        )
         DropdownMenuItem(text = { Text("About") }, leadingIcon = { Icon(AppIcons.Info, null) }, onClick = { open = false; onAbout() })
     }
 }

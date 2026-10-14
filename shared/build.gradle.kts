@@ -41,6 +41,13 @@ kotlin {
             implementation(libs.androidx.activity.compose)
             implementation(project.dependencies.platform(libs.koin.bom))
             implementation(libs.koin.android)
+            implementation(libs.ktor.client.okhttp)
+        }
+        jvmMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -57,6 +64,8 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ksafe)
+            implementation(libs.ktor.client.core)
+            implementation(libs.kotlinx.io.core)
 
             implementation(project.dependencies.platform(libs.koin.bom))
             implementation(libs.koin.core)

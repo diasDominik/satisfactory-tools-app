@@ -11,6 +11,7 @@ import io.github.diasdominik.sft.data.Constants
 import io.github.diasdominik.sft.data.DataLoader
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.GameVersion
+import io.github.diasdominik.sft.icons.IconStore
 import io.github.diasdominik.sft.planner.GraphPoint
 import io.github.diasdominik.sft.planner.InputItem
 import io.github.diasdominik.sft.planner.ProductionData
@@ -119,7 +120,7 @@ class ProductionTab(val id: Long, initial: ProductionData, private val gameData:
 }
 
 @KoinViewModel
-class AppState(private val settings: SettingsStore) : ViewModel() {
+class AppState(private val settings: SettingsStore, val icons: IconStore) : ViewModel() {
     private val scope: CoroutineScope get() = viewModelScope
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -160,10 +161,18 @@ class AppState(private val settings: SettingsStore) : ViewModel() {
                 if (target != version) return@launch
                 gameData = loaded
                 restoreTabs(loaded)
+                // Fetched in the background once per game version; the app's own icons show until then.
+                launch { icons.sync(loaded) }
             } catch (e: Throwable) {
                 loadError = e.message ?: e.toString()
             }
         }
+    }
+
+    /** Fetches every game icon again, for example after the wiki updated them. */
+    fun redownloadIcons() {
+        val data = gameData ?: return
+        scope.launch { icons.sync(data, force = true) }
     }
 
     fun saveUnlockedAlternates(recipes: List<String>) {

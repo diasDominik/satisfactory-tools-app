@@ -14,6 +14,8 @@ kotlinx-serialization = "1.11.0"
 ksafe = "3.3.0"
 koin = "4.2.2"
 koin-compiler = "1.2.1"
+ktor = "3.6.0"
+kotlinx-io = "0.9.1"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
@@ -37,6 +39,10 @@ koin-annotations = { module = "io.insert-koin:koin-annotations" }
 koin-compose = { module = "io.insert-koin:koin-compose" }
 koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel" }
 koin-android = { module = "io.insert-koin:koin-android" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 navigation3-ui = { module = "org.jetbrains.androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
 
 [plugins]

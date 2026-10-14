@@ -1,6 +1,7 @@
 package io.github.diasdominik.sft.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -25,14 +27,16 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import io.github.diasdominik.sft.data.GameData
+import io.github.diasdominik.sft.icons.LocalIconStore
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
  * Original, generated icons in the spirit of the game's item art: a shape for the kind of item
- * (ore, ingot, plate, fluid, …) tinted with the colour of its material. The game's own icons are
- * Coffee Stain's and may not be redistributed by derivative works.
+ * (ore, ingot, plate, fluid, …) tinted with the colour of its material. They show until the game's
+ * own icons have been downloaded from the wiki (see IconStore), and for anything the wiki lacks; the
+ * app itself doesn't ship Coffee Stain's icons.
  */
 enum class Glyph {
     ORE, INGOT, PLATE, SHEET, ROD, WIRE, CABLE, SCREW, BEAM, PIPE, FRAME, GEAR, CHIP, CRYSTAL, POWDER,
@@ -170,7 +174,16 @@ fun GameIcon(data: GameData?, className: String?, size: Dp, modifier: Modifier =
         val item = className?.let { data?.item(it) }
         val building = className?.let { data?.building(it) }
         val schematic = className?.let { data?.schematic(it) }
+        // The game's own icon once it has been downloaded; until then, and for anything the wiki lacks, ours.
+        val store = LocalIconStore.current
+        val downloaded = if (store != null && className != null && (item != null || building != null)) {
+            LaunchedEffect(className, store.generation) { store.load(className) }
+            store.bitmap(className)
+        } else {
+            null
+        }
         when {
+            downloaded != null -> Image(downloaded, contentDescription = null, modifier = Modifier.fillMaxSize().padding(size / 14))
             item != null -> {
                 val color = if (item.liquid && item.fluidColor.let { it.r + it.g + it.b } > 0) {
                     Color(item.fluidColor.r, item.fluidColor.g, item.fluidColor.b)

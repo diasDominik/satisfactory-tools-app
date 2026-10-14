@@ -25,8 +25,9 @@ fun AboutScreen(onBack: () -> Unit) {
                     "• The production planner solves on your device, so it works offline. Results can differ slightly from the " +
                         "website's server-side solver when several equally good solutions exist.\n" +
                         "• Share links are replaced by .sft export and import, which are compatible with the website's export files.\n" +
-                        "• Item and building icons are placeholders: the game's icons belong to Coffee Stain Studios and may not be " +
-                        "redistributed by derivative works.\n" +
+                        "• Item and building icons are downloaded once from the Satisfactory wiki (satisfactory.wiki.gg) and kept on " +
+                        "your device for offline use; they belong to Coffee Stain Studios. The app ships its own simple icons, which " +
+                        "show until the download is done and for anything the wiki doesn't have.\n" +
                         "• Only game version 1.0 (and the 1.0 FICSMAS data) is supported.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
