@@ -91,7 +91,7 @@ object SaveFile {
             val keepFrom = minOf(pending.minOfOrNull { it.second } ?: Int.MAX_VALUE, searchFrom)
             window = window.copyOfRange(keepFrom, window.size) + chunk
             searchFrom -= keepFrom
-            pending.replaceAll { it.first to it.second - keepFrom }
+            for (i in pending.indices) pending[i] = pending[i].first to pending[i].second - keepFrom
             for (i in searchFrom..window.size - longest) {
                 for ((name, needle) in needles) if (window.matches(i, needle)) pending += name to i
             }

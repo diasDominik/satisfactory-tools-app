@@ -198,6 +198,7 @@ internal fun LazyListScope.overviewSection(data: GameData, tab: ProductionTab, r
     item(key = "ov-power") {
         SectionCard("Power") {
             Text(result.power.total.text(), style = MaterialTheme.typography.headlineSmall)
+            if (result.generatedPower > 0) Text("Its own power plants make ${fmt(result.generatedPower)} MW.", style = MaterialTheme.typography.bodySmall)
         }
     }
     boostSection(data, tab)
@@ -337,7 +338,10 @@ private fun graphModel(
                     RecipeColor,
                     details = node.machines.machines.map { "${it.amount}× ${machine.name} at ${fmt(it.clockSpeed, 4)} % clock speed" } +
                         (if (sloops > 0) listOf("$sloops Somersloops ($slots per building): double output, four times the power") else emptyList()) +
-                        listOf("Needed power: ${fmt(node.machines.power.average)} MW") +
+                        listOf(
+                            if (usage.isGenerator) "Makes ${fmt(usage.amount * usage.powerOutput)} MW"
+                            else "Needed power: ${fmt(node.machines.power.average)} MW",
+                        ) +
                         node.inputs.map { "IN: ${fmt(it.maxAmount)} / min ${data.nameOf(it.item)}" } +
                         node.outputs.map { "OUT: ${fmt(it.maxAmount)} / min ${data.nameOf(it.item)}" },
                     action = "Building" to { links.open(data, machine.className) },
@@ -501,6 +505,7 @@ internal fun LazyListScope.powerSection(data: GameData, result: ProductionResult
     item(key = "p-total") {
         SectionCard("Total") {
             Text(result.power.total.text(), style = MaterialTheme.typography.headlineSmall)
+            if (result.generatedPower > 0) Text("Its own power plants make ${fmt(result.generatedPower)} MW.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

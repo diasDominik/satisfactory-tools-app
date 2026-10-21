@@ -47,6 +47,7 @@ enum class SetupSection(val label: String) {
     ALTERNATES("Alternate recipes"),
     BASIC("Basic recipes"),
     MACHINES("Machines"),
+    POWER("Power plants"),
 }
 
 enum class ResultSection(val label: String) {
@@ -188,6 +189,7 @@ internal fun LazyListScope.setupContent(section: SetupSection, state: AppState, 
         }
         SetupSection.BASIC -> recipeToggleSection(data, tab, alternates = false)
         SetupSection.MACHINES -> machinesSection(data, tab)
+        SetupSection.POWER -> factoryPowerSection(data, tab)
     }
 }
 

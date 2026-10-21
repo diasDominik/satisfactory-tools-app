@@ -85,6 +85,8 @@ data class ProductionRequest(
      * this many, instead of [amplifiedMachines] and [amplifiedRecipes].
      */
     val somersloopBudget: Int? = null,
+    /** App-only: power plants inside this line that cover what it uses. */
+    val power: FactoryPower? = null,
 ) {
     /** Whether [recipe] runs in [machine] with every Somersloop slot filled. */
     fun isAmplified(recipe: String, machine: String): Boolean =
@@ -100,3 +102,13 @@ data class ProductionRequest(
         const val MAX_CLOCK_SPEED = 250.0
     }
 }
+
+/** Generators a production line runs itself to cover its own power use. */
+@Serializable
+data class FactoryPower(
+    /** Generator → fuels it may burn. The planner picks the cheapest mix. */
+    val generators: Map<String, List<String>> = emptyMap(),
+    /** Headroom on top of what the line uses, in percent. */
+    val extraPercent: Double = 0.0,
+    val clockSpeed: Double = 100.0,
+)

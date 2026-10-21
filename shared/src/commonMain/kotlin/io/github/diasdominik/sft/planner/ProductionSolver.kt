@@ -3,6 +3,7 @@ package io.github.diasdominik.sft.planner
 import io.github.diasdominik.sft.data.Building
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.Recipe
+import kotlin.math.pow
 
 /** Raw solver output, equivalent to the upstream API response. */
 data class SolverOutput(
@@ -24,7 +25,10 @@ data class RecipeUsage(
     val clockSpeed: Double = 100.0,
     /** Every Somersloop slot filled: twice the output for the same input, at four times the power. */
     val amplified: Boolean = false,
+    /** MW one machine at 100 % makes; only power plants inside the line have it. */
+    val powerOutput: Double = 0.0,
 ) {
+    val isGenerator: Boolean get() = powerOutput > 0
     val outputFactor: Double get() = if (amplified) Somersloop.OUTPUT_FACTOR else 1.0
 }
 
@@ -45,6 +49,9 @@ data class RecipeUsage(
  * With a Somersloop budget, every recipe that runs in a building with slots also gets an amplified
  * variant (twice the output for the same input) and a whole number of amplified buildings, each using
  * all its slots, within the budget. That makes it an integer program, solved by [BranchAndBound].
+ *
+ * With power plants in the line, every allowed generator and fuel is a variable too (generators at
+ * 100 %), and what they make must cover what the line's buildings and extractors use, plus headroom.
  */
 class ProductionSolver(private val data: GameData) {
 
@@ -78,6 +85,10 @@ class ProductionSolver(private val data: GameData) {
         val sloopRecipes = if (budget == null) emptyList() else recipes.filter { Somersloop.slots(data.machineFor(it)!!.className) > 0 }
         val amplifiedVar = sloopRecipes.associateWith { next++ }
         val amplifiedCountVar = sloopRecipes.associateWith { next++ }
+        val power = request.power?.takeIf { it.generators.isNotEmpty() }
+        val generatorVar = if (power == null) emptyMap() else power.generators.flatMap { (generator, fuels) ->
+            fuels.mapNotNull { fuel -> data.recipe(data.powerRecipeClass(generator, fuel)) }
+        }.filter { r -> r.ingredients.all { it.item in reachable } }.associateWith { next++ }
 
         val itemCoefficients = LinkedHashMap<String, MutableMap<Int, Double>>()
         fun coef(item: String) = itemCoefficients.getOrPut(item) { HashMap() }
@@ -92,6 +103,10 @@ class ProductionSolver(private val data: GameData) {
                 for (p in recipe.products) coef(p.item).mergeWith(amplified, p.amount * perMinuteFactor * Somersloop.OUTPUT_FACTOR) { a, b -> a + b }
                 for (i in recipe.ingredients) coef(i.item).mergeWith(amplified, -i.amount * perMinuteFactor) { a, b -> a + b }
             }
+        }
+        for ((recipe, variable) in generatorVar) {
+            for (p in recipe.products) coef(p.item).mergeWith(variable, p.amount) { a, b -> a + b }
+            for (i in recipe.ingredients) coef(i.item).mergeWith(variable, -i.amount) { a, b -> a + b }
         }
         for ((resource, variable) in resourceVar) coef(resource)[variable] = 1.0
         for ((item, variable) in inputVar) coef(item)[variable] = 1.0
@@ -132,6 +147,24 @@ class ProductionSolver(private val data: GameData) {
                     budget.toDouble(),
                 )
             }
+            if (power != null && generatorVar.isNotEmpty()) {
+                // Made ≥ (1 + headroom) × used, everything in MW.
+                val headroom = 1 + power.extraPercent.coerceAtLeast(0.0) / 100
+                val row = HashMap<Int, Double>()
+                for ((recipe, variable) in generatorVar) {
+                    row[variable] = data.generators.getValue(recipe.producedIn.first()).powerProduction
+                }
+                for ((recipe, variable) in recipeVar) {
+                    val use = powerPerMachine(request, recipe, amplified = request.isAmplified(recipe.className, data.machineFor(recipe)!!.className))
+                    if (use > 0) row[variable] = -use * headroom
+                }
+                for ((recipe, variable) in amplifiedVar) row[variable] = -powerPerMachine(request, recipe, amplified = true) * headroom
+                for ((resource, variable) in resourceVar) {
+                    val use = extractionPowerPerUnit(request, resource)
+                    if (use > 0) row[variable] = -use * headroom
+                }
+                lp.addConstraint(row, LinearProgram.Relation.GE, 0.0)
+            }
             return lp
         }
 
@@ -144,6 +177,7 @@ class ProductionSolver(private val data: GameData) {
             // Somersloops that gain nothing stay in the inventory.
             for ((recipe, variable) in amplifiedCountVar) lp.objective[variable] = TIE_BREAK * Somersloop.slots(data.machineFor(recipe)!!.className)
             for ((_, variable) in byproductVar) lp.objective[variable] = TIE_BREAK
+            for ((_, variable) in generatorVar) lp.objective[variable] = TIE_BREAK
         }
 
         val integers = amplifiedCountVar.values.toList()
@@ -183,6 +217,14 @@ class ProductionSolver(private val data: GameData) {
                 },
             )
         }
+        val generators = generatorVar.mapNotNull { (recipe, variable) ->
+            val amount = clean(solution[variable]).takeIf { it > 0 } ?: return@mapNotNull null
+            val generator = recipe.producedIn.first()
+            RecipeUsage(
+                recipe, data.powerMachine(generator)!!, amount, power!!.clockSpeed.coerceIn(ProductionRequest.MIN_CLOCK_SPEED, ProductionRequest.MAX_CLOCK_SPEED),
+                powerOutput = data.generators.getValue(generator).powerProduction,
+            )
+        }
         val mined = resourceVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
         val inputs = inputVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
         val productAmounts = LinkedHashMap<String, Double>()
@@ -191,7 +233,22 @@ class ProductionSolver(private val data: GameData) {
         for ((item, ratio) in maxRatio) productAmounts.mergeWith(item, ratio * finalScale) { a, b -> a + b }
         val byproducts = byproductVar.mapValues { clean(solution[it.value]) }.filterValues { it > 1e-6 }
 
-        return SolverOutput(usages, mined, inputs, productAmounts, byproducts)
+        return SolverOutput(usages + generators, mined, inputs, productAmounts, byproducts)
+    }
+
+    /** MW per machine at 100 % throughput of [recipe], at its clock speed (a faster machine does more of it). */
+    private fun powerPerMachine(request: ProductionRequest, recipe: Recipe, amplified: Boolean): Double {
+        val machine = data.machineFor(recipe)!!
+        val clock = request.clockSpeedFor(machine.className, recipe.className) / 100
+        val base = if (recipe.isVariablePower) (recipe.minPower + recipe.maxPower) / 2 else machine.metadata.powerConsumption
+        return base * clock.pow(machine.metadata.powerConsumptionExponent) / clock * (if (amplified) Somersloop.POWER_FACTOR else 1.0)
+    }
+
+    /** MW the extractors use per unit of [resource] mined per minute. */
+    private fun extractionPowerPerUnit(request: ProductionRequest, resource: String): Double {
+        val settings = Extraction.settings(data, request, resource) ?: return 0.0
+        val rate = Extraction.rate(data, settings).takeIf { it > 0 } ?: return 0.0
+        return (Extraction.details(data, request, resource, rate)?.power ?: 0.0) / rate
     }
 
     /** Applies blocked machines and recipe toggles the same way upstream ProductionTab.calculate does. */

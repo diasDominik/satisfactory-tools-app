@@ -113,6 +113,10 @@ object FactoryLayoutPlanner {
         "Desc_HadronCollider_C" to (24.0 to 38.0),
         "Desc_QuantumEncoder_C" to (22.0 to 48.0),
         "Desc_Converter_C" to (16.0 to 16.0),
+        "Desc_GeneratorCoal_C" to (10.0 to 26.0),
+        "Desc_GeneratorFuel_C" to (20.0 to 20.0),
+        "Desc_GeneratorNuclear_C" to (36.0 to 43.0),
+        "Desc_GeneratorBiomass_Automated_C" to (8.0 to 8.0),
     )
     private const val MAX_PER_ROW = 10
     /** Spacing of bus lanes and of the belts along a row. */

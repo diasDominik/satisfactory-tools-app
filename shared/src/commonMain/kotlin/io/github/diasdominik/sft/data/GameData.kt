@@ -20,6 +20,11 @@ object Constants {
     const val PLUTONIUM_WASTE = "Desc_PlutoniumWaste_C"
     const val NUCLEAR_FUEL_ROD = "Desc_NuclearFuelRod_C"
     const val GEOTHERMAL_GENERATOR = "Desc_GeneratorGeoThermal_C"
+    /** Waste left per fuel rod burned. */
+    val WASTE_PER_ROD: Map<String, Pair<String, Double>> = mapOf(
+        NUCLEAR_FUEL_ROD to (NUCLEAR_WASTE to 50.0),
+        "Desc_PlutoniumFuelRod_C" to (PLUTONIUM_WASTE to 10.0),
+    )
 
     const val MULTIPLIER_IMPURE = 0.5
     const val MULTIPLIER_NORMAL = 1.0
@@ -89,7 +94,7 @@ class GameData(val version: GameVersion, val raw: GameDataSchema) {
     private val schematicsBySlug = raw.schematics.values.associateBy { it.slug }
 
     fun item(className: String?): Item? = className?.let { raw.items[it] }
-    fun recipe(className: String?): Recipe? = className?.let { raw.recipes[it] }
+    fun recipe(className: String?): Recipe? = className?.let { raw.recipes[it] ?: powerRecipes[it] }
     fun building(className: String?): Building? = className?.let { raw.buildings[it] }
     fun schematic(className: String?): Schematic? = className?.let { raw.schematics[it] }
     fun itemBySlug(slug: String) = itemsBySlug[slug]
@@ -121,6 +126,36 @@ class GameData(val version: GameVersion, val raw: GameDataSchema) {
     /** Machines a recipe runs in (only automated manufacturers). */
     fun machineFor(recipe: Recipe): Building? =
         recipe.producedIn.firstNotNullOfOrNull { raw.buildings[it]?.takeIf { b -> isManufacturer(b) && !isManualManufacturer(b) } }
+
+    /**
+     * A generator burning one fuel, written as a recipe so a production line can include power plants:
+     * per minute, what one generator at 100 % burns (fuel and water) and leaves (waste).
+     */
+    val powerRecipes: Map<String, Recipe> by lazy {
+        raw.generators.values.flatMap { g ->
+            val generator = raw.buildings[g.className] ?: return@flatMap emptyList()
+            g.fuel.mapNotNull { fuel ->
+                val item = raw.items[fuel] ?: return@mapNotNull null
+                val burn = Formula.fuelConsumption(g, item, 100.0).takeIf { it > 0 } ?: return@mapNotNull null
+                val water = Formula.generatorWaterConsumption(g, 100.0)
+                Recipe(
+                    slug = "power-" + generator.slug + "-" + item.slug,
+                    name = generator.name + " (" + item.name + ")",
+                    className = powerRecipeClass(g.className, fuel),
+                    time = 60.0,
+                    ingredients = listOf(ItemAmount(fuel, burn)) + if (water > 0) listOf(ItemAmount(Constants.WATER, water)) else emptyList(),
+                    products = Constants.WASTE_PER_ROD[fuel]?.let { (waste, perRod) -> listOf(ItemAmount(waste, burn * perRod)) }.orEmpty(),
+                    producedIn = listOf(g.className),
+                )
+            }
+        }.associateBy { it.className }
+    }
+
+    /** The generator a power recipe runs in, set up so one "machine" is one generator at 100 %. */
+    fun powerMachine(generator: String): Building? =
+        raw.buildings[generator]?.let { it.copy(metadata = it.metadata.copy(powerConsumption = 0.0, manufacturingSpeed = 1.0)) }
+
+    fun powerRecipeClass(generator: String, fuel: String) = "Power_" + generator + "_" + fuel
 
     val baseRecipes: List<Recipe> by lazy {
         raw.recipes.values.filter { !it.alternate && it.inMachine }.sortedBy { it.name }

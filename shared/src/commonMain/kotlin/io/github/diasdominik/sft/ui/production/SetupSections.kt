@@ -50,6 +50,7 @@ import io.github.diasdominik.sft.planner.ResourceExtraction
 import io.github.diasdominik.sft.planner.ProductionItem
 import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionType
+import io.github.diasdominik.sft.planner.FactoryPower
 import io.github.diasdominik.sft.planner.Somersloop
 import io.github.diasdominik.sft.platform.rememberSaveFilePicker
 import io.github.diasdominik.sft.state.AppState
@@ -628,4 +629,75 @@ private fun ClockField(value: Double, onValueChange: (Double) -> Unit) {
         label = "Clock",
         suffix = "%",
     )
+}
+
+/** Power plants inside the line: which generators and fuels it may use to cover its own power. */
+@OptIn(ExperimentalLayoutApi::class)
+internal fun LazyListScope.factoryPowerSection(data: GameData, tab: ProductionTab) {
+    item(key = "power-hint") {
+        Hint(
+            "Let this line run its own power plants. The planner adds the generators, their fuel chain and water " +
+                "so they cover every building and extractor in the line, choosing the cheapest of the fuels you allow.",
+        )
+    }
+    item(key = "power-switch") {
+        val power = tab.request.power
+        RowCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Power plants in this line", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Switch(power != null, onCheckedChange = { on ->
+                    tab.updateRequest { r ->
+                        r.copy(power = if (on) FactoryPower(generators = mapOf("Desc_GeneratorCoal_C" to listOf("Desc_Coal_C"))) else null)
+                    }
+                })
+            }
+            if (power != null) {
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NumberField(
+                        power.extraPercent,
+                        { v -> if (v >= 0) tab.updateRequest { r -> r.copy(power = r.power?.copy(extraPercent = v)) } },
+                        modifier = Modifier.weight(1f),
+                        label = "Extra power",
+                        suffix = "%",
+                    )
+                    NumberField(
+                        power.clockSpeed,
+                        { v -> if (v > 0) tab.updateRequest { r -> r.copy(power = r.power?.copy(clockSpeed = v.coerceIn(ProductionRequest.MIN_CLOCK_SPEED, ProductionRequest.MAX_CLOCK_SPEED))) } },
+                        modifier = Modifier.weight(1f),
+                        label = "Generator clock",
+                        suffix = "%",
+                    )
+                }
+            }
+        }
+    }
+    val power = tab.request.power ?: return
+    items(data.generators.values.toList(), key = { "gen" + it.className }) { generator ->
+        val allowed = power.generators[generator.className].orEmpty()
+        RowCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                EntityIcon(data, generator.className, 32.dp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(data.nameOf(generator.className), style = MaterialTheme.typography.titleSmall)
+                    Text("${fmt(generator.powerProduction)} MW each at 100 %", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                generator.fuel.filter { data.recipe(data.powerRecipeClass(generator.className, it)) != null }.forEach { fuel ->
+                    FilterChip(
+                        selected = fuel in allowed,
+                        onClick = {
+                            tab.updateRequest { r ->
+                                val current = r.power ?: return@updateRequest r
+                                val fuels = current.generators[generator.className].orEmpty().toggle(fuel)
+                                r.copy(power = current.copy(generators = if (fuels.isEmpty()) current.generators - generator.className else current.generators + (generator.className to fuels)))
+                            }
+                        },
+                        label = { Text(data.nameOf(fuel)) },
+                    )
+                }
+            }
+        }
+    }
 }

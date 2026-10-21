@@ -209,6 +209,10 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
     val alternatesNeeded: List<Recipe> = graph.nodes.filterIsInstance<RecipeNode>()
         .map { it.usage.recipe }.filter { it.alternate }.distinct().sortedBy { it.name }
     val power: PowerDetails = calculatePower()
+    /** MW the line's own power plants make (generators scale linearly with clock speed). */
+    val generatedPower: Double = Numbers.round(
+        graph.nodes.filterIsInstance<RecipeNode>().sumOf { it.usage.amount * it.usage.powerOutput },
+    )
     /** Somersloops the plan slots into Production Amplifier buildings. */
     val somersloops: Int = graph.nodes.filterIsInstance<RecipeNode>().sumOf { it.machines.somersloops }
     /** Power Shards needed by overclocked production buildings and extractors. */
@@ -344,7 +348,7 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
 
     private fun calculatePower(): PowerDetails {
         val byBuilding = LinkedHashMap<String, MachinePowerDetails>()
-        for (node in graph.nodes.filterIsInstance<RecipeNode>()) {
+        for (node in graph.nodes.filterIsInstance<RecipeNode>().filterNot { it.usage.isGenerator }) {
             val machine = node.usage.machine.className
             val group = node.machines
             val current = byBuilding[machine]

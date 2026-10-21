@@ -1,5 +1,6 @@
 package io.github.diasdominik.sft.planner
 
+import io.github.diasdominik.sft.data.Constants
 import io.github.diasdominik.sft.data.Formula
 import io.github.diasdominik.sft.data.GameData
 import kotlin.math.ceil
@@ -23,11 +24,6 @@ data class PowerPlan(
 object PowerPlanner {
     /** Water Extractor output at 100 %, m³/min. */
     const val WATER_EXTRACTOR_RATE = 120.0
-
-    private val WASTE_PER_ROD = mapOf(
-        "Desc_NuclearFuelRod_C" to ("Desc_NuclearWaste_C" to 50.0),
-        "Desc_PlutoniumFuelRod_C" to ("Desc_PlutoniumWaste_C" to 10.0),
-    )
 
     /** Generators needed to deliver [targetMw] at [clockSpeed]. */
     fun generatorsFor(data: GameData, generator: String, targetMw: Double, clockSpeed: Double): Int {
@@ -53,7 +49,7 @@ object PowerPlanner {
             fuelPerMinute = fuelRate,
             waterPerMinute = water,
             waterExtractors = if (water > 0) ceil(water / WATER_EXTRACTOR_RATE - 1e-9).toInt() else 0,
-            waste = WASTE_PER_ROD[fuel]?.let { (waste, perRod) -> waste to fuelRate * perRod },
+            waste = Constants.WASTE_PER_ROD[fuel]?.let { (waste, perRod) -> waste to fuelRate * perRod },
         )
     }
 }
