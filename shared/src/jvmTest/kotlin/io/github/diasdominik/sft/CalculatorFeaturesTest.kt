@@ -168,7 +168,7 @@ class BoostAndBuildTest {
         val plan = io.github.diasdominik.sft.planner.BoostOptimizer.optimize(data, rip, somersloops = 4, shards = 0)!!
         assertTrue(plan.somersloopsUsed in 1..4, "used ${plan.somersloopsUsed}")
         assertTrue(plan.after.resourceScore < plan.before.resourceScore)
-        assertTrue(plan.amplifiedRecipes.isNotEmpty())
+        assertTrue(plan.amplifiedBuildings.isNotEmpty())
     }
 
     @Test

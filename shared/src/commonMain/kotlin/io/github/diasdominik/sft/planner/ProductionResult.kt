@@ -47,7 +47,8 @@ class ByproductNode(val item: String, val amount: Double) : GraphNode() {
 
 /** Stable name of a node across recalculations, used for saved graph positions and built marks. */
 fun graphNodeKey(node: GraphNode): String = when (node) {
-    is RecipeNode -> node.usage.recipe.className
+    // With a Somersloop budget a recipe can run both plain and amplified, as two steps.
+    is RecipeNode -> node.usage.recipe.className + if (node.usage.amplified) "+sloop" else ""
     is MinerNode -> "mine:" + node.item
     is InputNode -> "input:" + node.item
     is ProductNode -> "product:" + node.item
@@ -227,8 +228,10 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
             val building = node.usage.machine.className
             val amount = node.machines.count
             counts.mergeWith(building, amount) { a, b -> a + b }
-            recipesByBuilding.getOrPut(building) { LinkedHashMap() }[node.usage.recipe.className] =
-                RecipeBuildingDetails(amount, buildingCost(building, amount))
+            // A recipe can show up twice (plain and with Somersloops); count its buildings together.
+            val recipes = recipesByBuilding.getOrPut(building) { LinkedHashMap() }
+            val total = amount + (recipes[node.usage.recipe.className]?.amount ?: 0)
+            recipes[node.usage.recipe.className] = RecipeBuildingDetails(total, buildingCost(building, total))
         }
         for (e in extraction) {
             val building = e.extractor.className
@@ -344,8 +347,13 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
         for (node in graph.nodes.filterIsInstance<RecipeNode>()) {
             val machine = node.usage.machine.className
             val group = node.machines
-            val recipePower = RecipePowerDetails(node.usage.clockSpeed, group.count, group.machines, group.power.rounded())
             val current = byBuilding[machine]
+            val recipePower = current?.recipes?.get(node.usage.recipe.className)?.let { other ->
+                RecipePowerDetails(
+                    node.usage.clockSpeed, other.amount + group.count, other.machines + group.machines,
+                    Power(other.power.average + group.power.average, other.power.max + group.power.max, other.power.isVariable || group.power.isVariable).rounded(),
+                )
+            } ?: RecipePowerDetails(node.usage.clockSpeed, group.count, group.machines, group.power.rounded())
             byBuilding[machine] = if (current == null) {
                 MachinePowerDetails(group.count, group.power, mapOf(node.usage.recipe.className to recipePower))
             } else {

@@ -80,10 +80,15 @@ data class ProductionRequest(
     val amplifiedRecipes: List<String> = emptyList(),
     /** App-only: clock speed per recipe, e.g. from the Power Shard optimizer; wins over the building's. */
     val recipeClockSpeed: Map<String, Double> = emptyMap(),
+    /**
+     * App-only: when set, the planner decides itself which buildings get Somersloops, using at most
+     * this many, instead of [amplifiedMachines] and [amplifiedRecipes].
+     */
+    val somersloopBudget: Int? = null,
 ) {
     /** Whether [recipe] runs in [machine] with every Somersloop slot filled. */
     fun isAmplified(recipe: String, machine: String): Boolean =
-        Somersloop.slots(machine) > 0 && (recipe in amplifiedRecipes || machine in amplifiedMachines)
+        somersloopBudget == null && Somersloop.slots(machine) > 0 && (recipe in amplifiedRecipes || machine in amplifiedMachines)
 
     /** Clock speed the planner runs [machine] at, kept within what the game allows. */
     fun clockSpeedFor(machine: String, recipe: String? = null): Double =

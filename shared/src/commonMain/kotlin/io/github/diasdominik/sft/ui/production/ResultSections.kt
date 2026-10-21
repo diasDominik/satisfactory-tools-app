@@ -342,7 +342,7 @@ private fun graphModel(
                         node.outputs.map { "OUT: ${fmt(it.maxAmount)} / min ${data.nameOf(it.item)}" },
                     action = "Building" to { links.open(data, machine.className) },
                     key = key, checkable = true, done = key in built,
-                    toggles = if (slots == 0) emptyList() else {
+                    toggles = if (slots == 0 || request.somersloopBudget != null) emptyList() else {
                         val byMachine = machine.className in request.amplifiedMachines
                         listOf(
                             GraphToggle(

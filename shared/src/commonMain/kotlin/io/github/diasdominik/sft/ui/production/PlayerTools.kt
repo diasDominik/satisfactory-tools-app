@@ -82,8 +82,8 @@ internal fun LazyListScope.boostSection(data: GameData, tab: ProductionTab) {
         var failed by remember(tab.request) { mutableStateOf(false) }
         val scope = rememberCoroutineScope()
         SectionCard("Somersloops and Power Shards") {
-            Hint("Enter how many you have and get a suggestion: Somersloops go where they save the most raw resources " +
-                "(or add the most output), Power Shards where they save the most buildings.")
+            Hint("Enter how many you have and get a suggestion: the planner places Somersloops where they save the most raw resources " +
+                "(or add the most output), and Power Shards where they save the most buildings.")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 NumberField(metadata.somersloopsOwned.toDouble(), { if (it >= 0) tab.setOwned(somersloops = it.toInt()) }, Modifier.weight(1f), label = "Somersloops")
                 NumberField(metadata.powerShardsOwned.toDouble(), { if (it >= 0) tab.setOwned(shards = it.toInt()) }, Modifier.weight(1f), label = "Power Shards")
@@ -108,12 +108,14 @@ internal fun LazyListScope.boostSection(data: GameData, tab: ProductionTab) {
             }
             if (failed) Hint("No suggestion: the line has no plan to improve.")
             plan?.let { p ->
-                if (p.amplifiedRecipes.isEmpty() && p.recipeClockSpeed.isEmpty()) {
+                if (p.amplifiedBuildings.isEmpty() && p.recipeClockSpeed.isEmpty()) {
                     Hint("Nothing to gain here with what you have.")
                 } else {
-                    if (p.amplifiedRecipes.isNotEmpty()) {
+                    if (p.amplifiedBuildings.isNotEmpty()) {
                         Text("Somersloops (${p.somersloopsUsed}): fill every slot in", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-                        p.amplifiedRecipes.forEach { Text("• " + (data.recipe(it)?.name ?: it), style = MaterialTheme.typography.bodyMedium) }
+                        p.amplifiedBuildings.forEach { (recipe, count) ->
+                            Text("• $count× ${data.recipe(recipe)?.name ?: recipe}", style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                     if (p.recipeClockSpeed.isNotEmpty()) {
                         Text("Power Shards (${p.shardsUsed}): overclock", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))

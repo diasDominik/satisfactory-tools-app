@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -557,6 +558,33 @@ internal fun LazyListScope.machinesSection(data: GameData, tab: ProductionTab) {
             }
         }
     }
+    item(key = "sloop-budget") {
+        val budget = tab.request.somersloopBudget
+        RowCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Place Somersloops for me", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        if (budget == null) "Or pick buildings and recipes by hand below and in the graph."
+                        else "The planner picks the buildings where they help most, using at most this many.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(budget != null, onCheckedChange = { on ->
+                    tab.updateRequest { r -> r.copy(somersloopBudget = if (on) tab.data.metadata.somersloopsOwned.takeIf { it > 0 } ?: 10 else null) }
+                })
+            }
+            if (budget != null) {
+                NumberField(
+                    budget.toDouble(),
+                    { v -> if (v >= 0) tab.updateRequest { r -> r.copy(somersloopBudget = v.toInt()) } },
+                    modifier = Modifier.width(160.dp).padding(top = 8.dp),
+                    label = "Somersloops",
+                )
+            }
+        }
+    }
     items(data.manufacturers, key = { "m" + it.className }) { machine ->
         val enabled = machine.className !in tab.request.blockedMachines
         val slots = Somersloop.slots(machine.className)
@@ -579,7 +607,7 @@ internal fun LazyListScope.machinesSection(data: GameData, tab: ProductionTab) {
                     }
                 }
             }
-            if (enabled && slots > 0) {
+            if (enabled && slots > 0 && tab.request.somersloopBudget == null) {
                 FilterChip(
                     selected = machine.className in tab.request.amplifiedMachines,
                     onClick = { tab.toggleAmplifiedMachine(machine.className) },

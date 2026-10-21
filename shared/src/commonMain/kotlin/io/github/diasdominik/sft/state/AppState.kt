@@ -121,7 +121,9 @@ class ProductionTab(val id: Long, initial: ProductionData, private val gameData:
     }
 
     fun applyBoost(plan: BoostPlan) {
-        updateRequest { r -> r.copy(amplifiedRecipes = plan.amplifiedRecipes, amplifiedMachines = emptyList(), recipeClockSpeed = plan.recipeClockSpeed) }
+        updateRequest { r ->
+            r.copy(amplifiedRecipes = emptyList(), amplifiedMachines = emptyList(), recipeClockSpeed = plan.recipeClockSpeed, somersloopBudget = plan.somersloopBudget)
+        }
     }
 
     fun setIcon(icon: String?) {

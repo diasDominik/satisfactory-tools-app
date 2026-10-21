@@ -41,6 +41,10 @@ data class RecipeUsage(
  * The objective minimises the weighted raw resource use (the same weights upstream uses), with a
  * tiny tie-breaker on machine count. When something is maximised, the scale factor is maximised
  * first and the resource use minimised second.
+ *
+ * With a Somersloop budget, every recipe that runs in a building with slots also gets an amplified
+ * variant (twice the output for the same input) and a whole number of amplified buildings, each using
+ * all its slots, within the budget. That makes it an integer program, solved by [BranchAndBound].
  */
 class ProductionSolver(private val data: GameData) {
 
@@ -70,6 +74,10 @@ class ProductionSolver(private val data: GameData) {
         val resourceVar = LinkedHashMap<String, Int>()
         for (resource in resources) resourceVar[resource] = next++
         val inputVar = inputAmounts.keys.associateWith { next++ }
+        val budget = request.somersloopBudget?.takeIf { it > 0 }
+        val sloopRecipes = if (budget == null) emptyList() else recipes.filter { Somersloop.slots(data.machineFor(it)!!.className) > 0 }
+        val amplifiedVar = sloopRecipes.associateWith { next++ }
+        val amplifiedCountVar = sloopRecipes.associateWith { next++ }
 
         val itemCoefficients = LinkedHashMap<String, MutableMap<Int, Double>>()
         fun coef(item: String) = itemCoefficients.getOrPut(item) { HashMap() }
@@ -80,6 +88,10 @@ class ProductionSolver(private val data: GameData) {
             val boost = if (request.isAmplified(recipe.className, machine.className)) Somersloop.OUTPUT_FACTOR else 1.0
             for (p in recipe.products) coef(p.item).mergeWith(variable, p.amount * perMinuteFactor * boost) { a, b -> a + b }
             for (i in recipe.ingredients) coef(i.item).mergeWith(variable, -i.amount * perMinuteFactor) { a, b -> a + b }
+            amplifiedVar[recipe]?.let { amplified ->
+                for (p in recipe.products) coef(p.item).mergeWith(amplified, p.amount * perMinuteFactor * Somersloop.OUTPUT_FACTOR) { a, b -> a + b }
+                for (i in recipe.ingredients) coef(i.item).mergeWith(amplified, -i.amount * perMinuteFactor) { a, b -> a + b }
+            }
         }
         for ((resource, variable) in resourceVar) coef(resource)[variable] = 1.0
         for ((item, variable) in inputVar) coef(item)[variable] = 1.0
@@ -107,6 +119,19 @@ class ProductionSolver(private val data: GameData) {
                 maxRatio[item]?.let { row[scaleVar] = -it }
                 lp.addConstraint(row, LinearProgram.Relation.EQ, demand[item] ?: 0.0)
             }
+            if (budget != null) {
+                for ((recipe, amplified) in amplifiedVar) {
+                    val machine = data.machineFor(recipe)!!.className
+                    // Amplified throughput fits in the amplified buildings at their clock speed.
+                    val perBuilding = request.clockSpeedFor(machine, recipe.className) / 100.0
+                    lp.addConstraint(mapOf(amplified to 1.0, amplifiedCountVar.getValue(recipe) to -perBuilding), LinearProgram.Relation.LE, 0.0)
+                }
+                lp.addConstraint(
+                    amplifiedCountVar.map { (recipe, v) -> v to Somersloop.slots(data.machineFor(recipe)!!.className).toDouble() }.toMap(),
+                    LinearProgram.Relation.LE,
+                    budget.toDouble(),
+                )
+            }
             return lp
         }
 
@@ -115,14 +140,18 @@ class ProductionSolver(private val data: GameData) {
                 lp.objective[variable] = (request.resourceWeight[resource] ?: 1.0) + TIE_BREAK
             }
             for ((recipe, variable) in recipeVar) lp.objective[variable] = TIE_BREAK * (1 + recipe.ingredients.size)
+            for ((recipe, variable) in amplifiedVar) lp.objective[variable] = TIE_BREAK * (1 + recipe.ingredients.size)
+            // Somersloops that gain nothing stay in the inventory.
+            for ((recipe, variable) in amplifiedCountVar) lp.objective[variable] = TIE_BREAK * Somersloop.slots(data.machineFor(recipe)!!.className)
             for ((_, variable) in byproductVar) lp.objective[variable] = TIE_BREAK
         }
 
+        val integers = amplifiedCountVar.values.toList()
         var scale = 0.0
         if (scaleVar >= 0) {
             val lp = buildProgram()
             lp.objective[scaleVar] = -1.0
-            when (val result = Simplex.solve(lp)) {
+            when (val result = BranchAndBound.solve(lp, integers)) {
                 is LpResult.Optimal -> scale = result.values[scaleVar]
                 else -> return null
             }
@@ -135,18 +164,24 @@ class ProductionSolver(private val data: GameData) {
             lp.addConstraint(mapOf(scaleVar to 1.0), LinearProgram.Relation.GE, scale * (1 - 1e-9))
         }
         applyResourceObjective(lp)
-        val solution = when (val result = Simplex.solve(lp)) {
+        val solution = when (val result = BranchAndBound.solve(lp, integers)) {
             is LpResult.Optimal -> result.values
             else -> return null
         }
 
         fun clean(v: Double) = if (v < 1e-7) 0.0 else v
 
-        val usages = recipeVar.mapNotNull { (recipe, variable) ->
-            val amount = clean(solution[variable])
+        val usages = recipeVar.flatMap { (recipe, variable) ->
             val machine = data.machineFor(recipe)!!
-            if (amount <= 0) return@mapNotNull null
-            RecipeUsage(recipe, machine, amount, request.clockSpeedFor(machine.className, recipe.className), request.isAmplified(recipe.className, machine.className))
+            val clock = request.clockSpeedFor(machine.className, recipe.className)
+            listOfNotNull(
+                clean(solution[variable]).takeIf { it > 0 }?.let {
+                    RecipeUsage(recipe, machine, it, clock, request.isAmplified(recipe.className, machine.className))
+                },
+                amplifiedVar[recipe]?.let { clean(solution[it]) }?.takeIf { it > 0 }?.let {
+                    RecipeUsage(recipe, machine, it, clock, amplified = true)
+                },
+            )
         }
         val mined = resourceVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
         val inputs = inputVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
