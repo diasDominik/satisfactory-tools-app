@@ -50,6 +50,7 @@ import io.github.diasdominik.sft.planner.ProductionItem
 import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionType
 import io.github.diasdominik.sft.planner.Somersloop
+import io.github.diasdominik.sft.platform.rememberSaveFilePicker
 import io.github.diasdominik.sft.state.AppState
 import io.github.diasdominik.sft.state.ProductionTab
 import io.github.diasdominik.sft.ui.EntityIcon
@@ -410,31 +411,42 @@ internal fun LazyListScope.inputsSection(state: AppState, data: GameData, tab: P
 
 private fun recipeMachineDisabled(recipe: Recipe, blocked: List<String>) = recipe.producedIn.any { it in blocked }
 
-/** The player's own unlocked alternates, kept across production lines. */
+/** The player's own unlocked alternates, kept across production lines, typed in or read from a save. */
+@OptIn(ExperimentalLayoutApi::class)
 internal fun LazyListScope.unlockedAlternatesSection(state: AppState, tab: ProductionTab) {
     item(key = "unlocked") {
         val unlocked = state.unlockedAlternates
         val current = tab.request.allowedAlternateRecipes
+        var message by remember { mutableStateOf<String?>(null) }
+        var reading by remember { mutableStateOf(false) }
+        val pickSave = rememberSaveFilePicker { bytes ->
+            reading = true
+            message = null
+            state.importSave(bytes, tab) { reading = false; message = it }
+        }
         RowCard {
             Text("My unlocked alternates", style = MaterialTheme.typography.titleSmall)
             Text(
                 when {
-                    unlocked == null -> "Enable the alternates you've unlocked from hard drives and save them. New production lines then start with them."
+                    unlocked == null -> "Open your save file, or enable the alternates you've unlocked from hard drives and save them. New production lines then start with them."
                     unlocked.toSet() == current.toSet() -> "This line uses your ${unlocked.size} unlocked alternates. New production lines start with them."
                     else -> "${unlocked.size} saved. New production lines start with them."
-                },
+                } + (state.unlockProfile?.takeIf { it.sessionName.isNotEmpty() }?.let { " Read from \"${it.sessionName}\"." } ?: ""),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = pickSave, enabled = !reading) { Text(if (reading) "Reading save…" else "Open save file…") }
                 OutlinedButton(
                     onClick = { state.saveUnlockedAlternates(current) },
                     enabled = unlocked?.toSet() != current.toSet(),
                 ) { Text("Save these as mine") }
                 if (unlocked != null) {
                     OutlinedButton(
-                        onClick = { tab.updateRequest { r -> r.copy(allowedAlternateRecipes = unlocked) } },
-                        enabled = unlocked.toSet() != current.toSet(),
+                        onClick = { state.applyProfile(tab) },
+                        enabled = unlocked.toSet() != current.toSet() ||
+                            state.unlockProfile?.let { it.lockedRecipes.toSet() != tab.request.blockedRecipes.toSet() } == true,
                     ) { Text("Use mine") }
                 }
             }

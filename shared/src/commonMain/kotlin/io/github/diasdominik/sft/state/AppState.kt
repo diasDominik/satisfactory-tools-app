@@ -24,6 +24,11 @@ import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionResult
 import io.github.diasdominik.sft.planner.ProductionSolver
 import io.github.diasdominik.sft.planner.ProductionType
+import io.github.diasdominik.sft.platform.inflateZlib
+import io.github.diasdominik.sft.save.SaveFile
+import io.github.diasdominik.sft.save.SaveFileException
+import io.github.diasdominik.sft.save.SaveImport
+import io.github.diasdominik.sft.save.UnlockProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -151,6 +156,10 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
     /** The alternate recipes the player has unlocked (from hard drives); new lines start with them. */
     var unlockedAlternates by mutableStateOf<List<String>?>(null)
         private set
+
+    /** Progress read from the player's save; new lines also turn off what it hasn't unlocked yet. */
+    var unlockProfile by mutableStateOf<UnlockProfile?>(null)
+        private set
     private var nextId = 1L
 
     init {
@@ -198,6 +207,46 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         scope.launch { icons.sync(data, force = true) }
     }
 
+    /**
+     * Reads the unlocks out of a save file, keeps them as the player's own and applies them to [tab].
+     * [onDone] gets a sentence for the user saying what happened.
+     */
+    fun importSave(bytes: ByteArray, tab: ProductionTab?, onDone: (String) -> Unit) {
+        val data = gameData ?: return
+        scope.launch {
+            val profile = try {
+                withContext(Dispatchers.Default) { SaveImport.profile(data, SaveFile.readUnlocks(bytes, ::inflateZlib)) }
+            } catch (e: SaveFileException) {
+                onDone(e.message ?: "Couldn't read this save.")
+                return@launch
+            } catch (e: Exception) {
+                onDone("Couldn't read this save: " + (e.message ?: e.toString()))
+                return@launch
+            }
+            if (data != gameData) return@launch
+            saveUnlockedAlternates(profile.alternates)
+            unlockProfile = profile
+            settings.putString(profileKey(data.version), json.encodeToString(UnlockProfile.serializer(), profile))
+            tab?.let { applyProfile(it, profile) }
+            onDone(
+                "Read \"${profile.sessionName}\": ${profile.alternates.size} alternates unlocked" +
+                    (if (profile.lockedRecipes.isEmpty() && profile.lockedMachines.isEmpty()) "." else ", ${profile.lockedRecipes.size} recipes and ${profile.lockedMachines.size} buildings not unlocked yet are turned off.") +
+                    (if (tab != null) " Applied to this line; new lines start with it too." else " New lines start with it."),
+            )
+        }
+    }
+
+    /** Uses the player's unlocks in [tab]: their alternates, without what the save hasn't unlocked. */
+    fun applyProfile(tab: ProductionTab, profile: UnlockProfile? = unlockProfile) {
+        tab.updateRequest { r ->
+            r.copy(
+                allowedAlternateRecipes = unlockedAlternates ?: r.allowedAlternateRecipes,
+                blockedRecipes = profile?.lockedRecipes ?: r.blockedRecipes,
+                blockedMachines = profile?.lockedMachines ?: r.blockedMachines,
+            )
+        }
+    }
+
     fun saveUnlockedAlternates(recipes: List<String>) {
         val data = gameData ?: return
         unlockedAlternates = recipes
@@ -207,6 +256,9 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
     private fun restoreTabs(data: GameData) {
         unlockedAlternates = settings.getString(unlockedKey(data.version))?.let {
             runCatching { json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull()
+        }
+        unlockProfile = settings.getString(profileKey(data.version))?.let {
+            runCatching { json.decodeFromString(UnlockProfile.serializer(), it) }.getOrNull()
         }
         val stored = settings.getString(tabsKey(data.version))
         val list = stored?.let {
@@ -221,6 +273,8 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
             resourceWeight = Constants.RESOURCE_WEIGHTS,
             production = listOf(ProductionItem(type = ProductionType.PER_MINUTE, amount = 10.0, ratio = 100.0)),
             allowedAlternateRecipes = unlockedAlternates.orEmpty(),
+            blockedRecipes = unlockProfile?.lockedRecipes.orEmpty(),
+            blockedMachines = unlockProfile?.lockedMachines.orEmpty(),
         ),
     )
 
@@ -373,5 +427,6 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         const val KEY_VERSION = "version"
         fun tabsKey(version: GameVersion) = "tabs-" + version.id
         fun unlockedKey(version: GameVersion) = "unlocked-alternates-" + version.id
+        fun profileKey(version: GameVersion) = "unlock-profile-" + version.id
     }
 }
