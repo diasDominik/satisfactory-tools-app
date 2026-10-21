@@ -27,6 +27,10 @@ data class RecipeUsage(
     val amplified: Boolean = false,
     /** MW one machine at 100 % makes; only power plants inside the line have it. */
     val powerOutput: Double = 0.0,
+    val grouping: ClockGrouping = ClockGrouping.UNDERCLOCK_LAST,
+    /** Scales ingredients per craft and building power (cost multipliers). */
+    val ingredientFactor: Double = 1.0,
+    val powerFactor: Double = 1.0,
 ) {
     val isGenerator: Boolean get() = powerOutput > 0
     val outputFactor: Double get() = if (amplified) Somersloop.OUTPUT_FACTOR else 1.0
@@ -98,10 +102,10 @@ class ProductionSolver(private val data: GameData) {
             val perMinuteFactor = 60.0 / recipe.time * machine.metadata.manufacturingSpeed
             val boost = if (request.isAmplified(recipe.className, machine.className)) Somersloop.OUTPUT_FACTOR else 1.0
             for (p in recipe.products) coef(p.item).mergeWith(variable, p.amount * perMinuteFactor * boost) { a, b -> a + b }
-            for (i in recipe.ingredients) coef(i.item).mergeWith(variable, -i.amount * perMinuteFactor) { a, b -> a + b }
+            for (i in recipe.ingredients) coef(i.item).mergeWith(variable, -i.amount * perMinuteFactor * request.recipeCost) { a, b -> a + b }
             amplifiedVar[recipe]?.let { amplified ->
                 for (p in recipe.products) coef(p.item).mergeWith(amplified, p.amount * perMinuteFactor * Somersloop.OUTPUT_FACTOR) { a, b -> a + b }
-                for (i in recipe.ingredients) coef(i.item).mergeWith(amplified, -i.amount * perMinuteFactor) { a, b -> a + b }
+                for (i in recipe.ingredients) coef(i.item).mergeWith(amplified, -i.amount * perMinuteFactor * request.recipeCost) { a, b -> a + b }
             }
         }
         for ((recipe, variable) in generatorVar) {
@@ -170,7 +174,7 @@ class ProductionSolver(private val data: GameData) {
 
         fun applyResourceObjective(lp: LinearProgram) {
             for ((resource, variable) in resourceVar) {
-                lp.objective[variable] = (request.resourceWeight[resource] ?: 1.0) + TIE_BREAK
+                lp.objective[variable] = request.weightOf(resource) + TIE_BREAK
             }
             for ((recipe, variable) in recipeVar) lp.objective[variable] = TIE_BREAK * (1 + recipe.ingredients.size)
             for ((recipe, variable) in amplifiedVar) lp.objective[variable] = TIE_BREAK * (1 + recipe.ingredients.size)
@@ -210,10 +214,10 @@ class ProductionSolver(private val data: GameData) {
             val clock = request.clockSpeedFor(machine.className, recipe.className)
             listOfNotNull(
                 clean(solution[variable]).takeIf { it > 0 }?.let {
-                    RecipeUsage(recipe, machine, it, clock, request.isAmplified(recipe.className, machine.className))
+                    RecipeUsage(recipe, machine, it, clock, request.isAmplified(recipe.className, machine.className), grouping = request.clockGrouping, ingredientFactor = request.recipeCost, powerFactor = request.powerCost)
                 },
                 amplifiedVar[recipe]?.let { clean(solution[it]) }?.takeIf { it > 0 }?.let {
-                    RecipeUsage(recipe, machine, it, clock, amplified = true)
+                    RecipeUsage(recipe, machine, it, clock, amplified = true, grouping = request.clockGrouping, ingredientFactor = request.recipeCost, powerFactor = request.powerCost)
                 },
             )
         }
@@ -223,6 +227,7 @@ class ProductionSolver(private val data: GameData) {
             RecipeUsage(
                 recipe, data.powerMachine(generator)!!, amount, power!!.clockSpeed.coerceIn(ProductionRequest.MIN_CLOCK_SPEED, ProductionRequest.MAX_CLOCK_SPEED),
                 powerOutput = data.generators.getValue(generator).powerProduction,
+                grouping = request.clockGrouping,
             )
         }
         val mined = resourceVar.mapValues { clean(solution[it.value]) }.filterValues { it > 0 }
@@ -241,7 +246,7 @@ class ProductionSolver(private val data: GameData) {
         val machine = data.machineFor(recipe)!!
         val clock = request.clockSpeedFor(machine.className, recipe.className) / 100
         val base = if (recipe.isVariablePower) (recipe.minPower + recipe.maxPower) / 2 else machine.metadata.powerConsumption
-        return base * clock.pow(machine.metadata.powerConsumptionExponent) / clock * (if (amplified) Somersloop.POWER_FACTOR else 1.0)
+        return base * clock.pow(machine.metadata.powerConsumptionExponent) / clock * (if (amplified) Somersloop.POWER_FACTOR else 1.0) * request.powerCost
     }
 
     /** MW the extractors use per unit of [resource] mined per minute. */

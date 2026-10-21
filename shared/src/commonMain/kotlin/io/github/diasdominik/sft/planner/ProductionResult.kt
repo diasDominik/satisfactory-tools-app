@@ -3,7 +3,6 @@ package io.github.diasdominik.sft.planner
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.Recipe
 import kotlin.math.abs
-import kotlin.math.floor
 import kotlin.math.pow
 
 // ---------------------------------------------------------------------------------------------
@@ -21,7 +20,7 @@ sealed class GraphNode {
 
 class RecipeNode(val usage: RecipeUsage) : GraphNode() {
     private val multiplier = usage.amount * usage.machine.metadata.manufacturingSpeed * (60.0 / usage.recipe.time)
-    override val inputs = usage.recipe.ingredients.map { ResourceAmount(it.item, it.amount * multiplier, 0.0) }
+    override val inputs = usage.recipe.ingredients.map { ResourceAmount(it.item, it.amount * multiplier * usage.ingredientFactor, 0.0) }
     override val outputs = usage.recipe.products.map {
         val amount = it.amount * multiplier * usage.outputFactor
         ResourceAmount(it.item, amount, amount)
@@ -123,12 +122,8 @@ class MachineGroup(private val usage: RecipeUsage) {
     val power: Power
 
     init {
-        val exact = usage.amount * 100 / usage.clockSpeed
-        val list = mutableListOf<MachineGroupItem>()
-        val full = floor(exact + 1e-9).toInt()
-        if (full > 0) list += machine(full, usage.clockSpeed)
-        val rest = exact - full
-        if (rest > 1e-6) list += machine(1, Numbers.ceil(rest * usage.clockSpeed, 4))
+        val list = splitBuildings(usage.amount * 100 / usage.clockSpeed, usage.clockSpeed, usage.grouping)
+            .map { (count, clock) -> machine(count, clock) }
         machines = list
         var average = 0.0
         var max = 0.0
@@ -153,7 +148,7 @@ class MachineGroup(private val usage: RecipeUsage) {
     private fun machine(amount: Int, clockSpeed: Double): MachineGroupItem {
         val metadata = usage.machine.metadata
         val clockFactor = (clockSpeed / 100).pow(metadata.powerConsumptionExponent) *
-            (if (usage.amplified) Somersloop.POWER_FACTOR else 1.0)
+            (if (usage.amplified) Somersloop.POWER_FACTOR else 1.0) * usage.powerFactor
         var average = amount * metadata.powerConsumption * clockFactor
         var max = 0.0
         var variable = false

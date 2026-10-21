@@ -52,6 +52,9 @@ import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionType
 import io.github.diasdominik.sft.planner.FactoryPower
 import io.github.diasdominik.sft.planner.Somersloop
+import io.github.diasdominik.sft.planner.RecipeNode
+import io.github.diasdominik.sft.planner.ClockGrouping
+import io.github.diasdominik.sft.planner.WeightMode
 import io.github.diasdominik.sft.platform.rememberSaveFilePicker
 import io.github.diasdominik.sft.state.AppState
 import io.github.diasdominik.sft.state.ProductionTab
@@ -207,6 +210,29 @@ internal fun LazyListScope.resourcesSection(data: GameData, tab: ProductionTab) 
             OutlinedButton(onClick = { tab.updateRequest { r -> r.copy(resourceMax = r.resourceMax.mapValues { 0.0 }) } }) { Text("Set to 0") }
         }
     }
+    item(key = "weights") {
+        val mode = tab.request.weightMode
+        RowCard {
+            Text("Resource cost", style = MaterialTheme.typography.titleSmall)
+            Text(mode.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ChipRow {
+                WeightMode.entries.forEach { m ->
+                    FilterChip(
+                        selected = m == mode,
+                        onClick = {
+                            tab.updateRequest { r ->
+                                // Manual starts from what the previous mode used, so switching is never a jump.
+                                if (m == WeightMode.MANUAL && r.weightMode != WeightMode.MANUAL) {
+                                    r.copy(weightMode = m, resourceWeight = data.resourceList.associate { it.item to r.weightOf(it.item) })
+                                } else r.copy(weightMode = m)
+                            }
+                        },
+                        label = { Text(m.label) },
+                    )
+                }
+            }
+        }
+    }
     item { AllOresCard(data, tab) }
     items(data.resourceList, key = { "r" + it.item }) { resource ->
         val enabled = resource.item !in tab.request.blockedResources
@@ -228,6 +254,14 @@ internal fun LazyListScope.resourcesSection(data: GameData, tab: ProductionTab) 
                     label = "Limit",
                     enabled = enabled,
                     suffix = "/min",
+                )
+            }
+            if (enabled && tab.request.weightMode == WeightMode.MANUAL) {
+                NumberField(
+                    tab.request.weightOf(resource.item),
+                    { v -> if (v >= 0) tab.updateRequest { r -> r.copy(resourceWeight = r.resourceWeight + (resource.item to v)) } },
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    label = "Cost per unit",
                 )
             }
             if (enabled) ExtractionSettings(data, tab, resource.item)
@@ -555,6 +589,66 @@ internal fun LazyListScope.machinesSection(data: GameData, tab: ProductionTab) {
                 ClockField(tab.request.clockSpeed) { v ->
                     // Setting all buildings replaces the per-building values.
                     tab.updateRequest { r -> r.copy(clockSpeed = v, machineClockSpeed = emptyMap()) }
+                }
+            }
+            Text("When the work doesn't fill whole buildings", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+            ChipRow {
+                ClockGrouping.entries.forEach { g ->
+                    FilterChip(
+                        selected = g == tab.request.clockGrouping,
+                        onClick = { tab.updateRequest { r -> r.copy(clockGrouping = g) } },
+                        label = { Text(g.label) },
+                    )
+                }
+            }
+        }
+    }
+    item(key = "cost-multipliers") {
+        RowCard {
+            Text("Advanced game settings", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "If your world changes recipe or power costs (0.25 to 2 times), match it here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NumberField(
+                    tab.request.recipeCostMultiplier,
+                    { v -> if (v > 0) tab.updateRequest { r -> r.copy(recipeCostMultiplier = v.coerceIn(ProductionRequest.MIN_MULTIPLIER, ProductionRequest.MAX_MULTIPLIER)) } },
+                    modifier = Modifier.weight(1f),
+                    label = "Recipe cost",
+                    suffix = "×",
+                )
+                NumberField(
+                    tab.request.powerCostMultiplier,
+                    { v -> if (v > 0) tab.updateRequest { r -> r.copy(powerCostMultiplier = v.coerceIn(ProductionRequest.MIN_MULTIPLIER, ProductionRequest.MAX_MULTIPLIER)) } },
+                    modifier = Modifier.weight(1f),
+                    label = "Power cost",
+                    suffix = "×",
+                )
+            }
+        }
+    }
+    item(key = "recipe-clocks") {
+        // Recipes in the current plan, plus any with their own clock that the plan no longer uses.
+        val inPlan = tab.result?.graph?.nodes?.filterIsInstance<RecipeNode>()
+            ?.filterNot { it.usage.isGenerator }?.map { it.usage.recipe.className }.orEmpty()
+        val recipes = (inPlan + tab.request.recipeClockSpeed.keys).distinct().mapNotNull { data.recipe(it) }
+        if (recipes.isNotEmpty()) {
+            RowCard {
+                Text("Clock speed per recipe", style = MaterialTheme.typography.titleSmall)
+                Text("Wins over the building's clock speed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                recipes.forEach { recipe ->
+                    val machine = data.machineFor(recipe)?.className ?: return@forEach
+                    Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(recipe.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        ClockField(tab.request.clockSpeedFor(machine, recipe.className)) { v ->
+                            tab.updateRequest { r ->
+                                val building = r.clockSpeedFor(machine)
+                                r.copy(recipeClockSpeed = if (v == building) r.recipeClockSpeed - recipe.className else r.recipeClockSpeed + (recipe.className to v))
+                            }
+                        }
+                    }
                 }
             }
         }

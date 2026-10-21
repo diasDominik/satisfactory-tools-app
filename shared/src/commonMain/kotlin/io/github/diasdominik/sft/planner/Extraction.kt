@@ -6,7 +6,6 @@ import io.github.diasdominik.sft.data.Formula
 import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.Purity
 import kotlinx.serialization.Serializable
-import kotlin.math.floor
 import kotlin.math.pow
 
 /**
@@ -85,13 +84,9 @@ object Extraction {
         val extractor = data.building(settings.extractor!!) ?: return null
         val rate = rate(data, settings)
         if (rate <= 0) return null
-        // Run as many extractors as possible at the chosen clock speed and underclock the last one.
-        val exact = amount / rate
-        val full = floor(exact + 1e-9).toInt()
-        val groups = mutableListOf<ExtractorGroup>()
-        if (full > 0) groups += group(extractor, full, settings.clockSpeed)
-        val rest = exact - full
-        if (rest > 1e-6) groups += group(extractor, 1, Numbers.ceil(rest * settings.clockSpeed, 4))
+        // Split like production buildings: by default as many as possible at the chosen clock and the last slower.
+        val groups = splitBuildings(amount / rate, settings.clockSpeed, request.clockGrouping)
+            .map { (count, clock) -> group(extractor, count, clock).let { it.copy(power = it.power * request.powerCost) } }
         return ExtractionDetails(resource, extractor, settings, rate, amount, groups)
     }
 

@@ -24,6 +24,7 @@ import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionResult
 import io.github.diasdominik.sft.planner.ProductionSolver
 import io.github.diasdominik.sft.planner.ProductionType
+import io.github.diasdominik.sft.planner.WeightMode
 import io.github.diasdominik.sft.platform.inflateZlib
 import io.github.diasdominik.sft.save.SaveFile
 import io.github.diasdominik.sft.save.SaveFileException
@@ -273,6 +274,7 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         request = ProductionRequest(
             resourceMax = Constants.RESOURCE_AMOUNTS,
             resourceWeight = Constants.RESOURCE_WEIGHTS,
+            weightMode = WeightMode.MAP,
             production = listOf(ProductionItem(type = ProductionType.PER_MINUTE, amount = 10.0, ratio = 100.0)),
             allowedAlternateRecipes = unlockedAlternates.orEmpty(),
             blockedRecipes = unlockProfile?.lockedRecipes.orEmpty(),

@@ -43,7 +43,7 @@ object HardDriveAdvisor {
 
     fun stats(request: ProductionRequest, result: ProductionResult): PlanStats {
         val raw = result.rawResources.values.sumOf { it.used }
-        val score = result.rawResources.entries.sumOf { (item, r) -> r.used * (request.resourceWeight[item] ?: 1.0) }
+        val score = result.rawResources.entries.sumOf { (item, r) -> r.used * request.weightOf(item) }
         return PlanStats(raw, score, result.power.total.average, result.buildings.amount, result.output.values.sum())
     }
 

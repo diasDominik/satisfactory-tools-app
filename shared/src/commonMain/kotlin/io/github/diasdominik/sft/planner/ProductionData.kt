@@ -87,7 +87,30 @@ data class ProductionRequest(
     val somersloopBudget: Int? = null,
     /** App-only: power plants inside this line that cover what it uses. */
     val power: FactoryPower? = null,
+    /** App-only: how raw resources are weighed against each other. Older lines used their own weights. */
+    val weightMode: WeightMode = WeightMode.MANUAL,
+    /** App-only: how buildings split the work when the count isn't whole. */
+    val clockGrouping: ClockGrouping = ClockGrouping.UNDERCLOCK_LAST,
+    /** App-only: like the game's advanced settings, ingredients per craft and building power scaled. */
+    val recipeCostMultiplier: Double = 1.0,
+    val powerCostMultiplier: Double = 1.0,
 ) {
+    val recipeCost: Double get() = recipeCostMultiplier.coerceIn(MIN_MULTIPLIER, MAX_MULTIPLIER)
+    val powerCost: Double get() = powerCostMultiplier.coerceIn(MIN_MULTIPLIER, MAX_MULTIPLIER)
+
+    /** What one unit of [resource] costs the planner, by [weightMode]. */
+    fun weightOf(resource: String): Double = when (weightMode) {
+        WeightMode.MAP -> Constants.RESOURCE_WEIGHTS[resource] ?: 1.0
+        WeightMode.EQUAL -> if (resource == Constants.WATER) 0.0 else 1.0
+        WeightMode.MANUAL -> resourceWeight[resource] ?: 1.0
+        WeightMode.LIMITS -> {
+            // Like the map weights, but from this line's own limits: scarcer means dearer.
+            val limit = resourceMax[resource] ?: 0.0
+            val largest = resourceMax.values.filter { it > 0 && it < 1e12 }.maxOrNull() ?: 0.0
+            if (limit <= 0 || limit >= 1e12 || largest <= 0) 0.0 else largest / limit
+        }
+    }
+
     /** Whether [recipe] runs in [machine] with every Somersloop slot filled. */
     fun isAmplified(recipe: String, machine: String): Boolean =
         somersloopBudget == null && Somersloop.slots(machine) > 0 && (recipe in amplifiedRecipes || machine in amplifiedMachines)
@@ -100,6 +123,8 @@ data class ProductionRequest(
         const val MIN_CLOCK_SPEED = 1.0
         /** 100 % plus three Power Shards. */
         const val MAX_CLOCK_SPEED = 250.0
+        const val MIN_MULTIPLIER = 0.25
+        const val MAX_MULTIPLIER = 2.0
     }
 }
 
@@ -112,3 +137,39 @@ data class FactoryPower(
     val extraPercent: Double = 0.0,
     val clockSpeed: Double = 100.0,
 )
+
+@Serializable
+enum class WeightMode(val label: String, val description: String) {
+    MAP("Map", "Resources cost more the scarcer they are on the map."),
+    LIMITS("My limits", "Resources cost more the lower the limits you set here."),
+    EQUAL("Equal", "Every resource costs the same, so the plan uses the fewest raw resources in total."),
+    MANUAL("Manual", "Set the cost of each resource yourself."),
+}
+
+@Serializable
+enum class ClockGrouping(val label: String) {
+    UNDERCLOCK_LAST("Underclock the last"),
+    EQUAL("Clock all equally"),
+    NONE("No clocking"),
+}
+
+/**
+ * Splits [exact] buildings' worth of work at [clockSpeed] into groups of (count, clock speed):
+ * full buildings and one slower one, all equally slower, or whole buildings at the set speed.
+ */
+fun splitBuildings(exact: Double, clockSpeed: Double, grouping: ClockGrouping): List<Pair<Int, Double>> {
+    if (exact <= 1e-6) return emptyList()
+    val whole = kotlin.math.ceil(exact - 1e-9).toInt()
+    return when (grouping) {
+        ClockGrouping.UNDERCLOCK_LAST -> {
+            val full = kotlin.math.floor(exact + 1e-9).toInt()
+            val rest = exact - full
+            listOfNotNull(
+                (full to clockSpeed).takeIf { full > 0 },
+                (1 to Numbers.ceil(rest * clockSpeed, 4)).takeIf { rest > 1e-6 },
+            )
+        }
+        ClockGrouping.EQUAL -> listOf(whole to Numbers.ceil(exact * clockSpeed / whole, 4))
+        ClockGrouping.NONE -> listOf(whole to clockSpeed)
+    }
+}
