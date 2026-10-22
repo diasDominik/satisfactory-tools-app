@@ -24,6 +24,10 @@ import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionResult
 import io.github.diasdominik.sft.planner.ProductionSolver
 import io.github.diasdominik.sft.planner.ProductionType
+import io.github.diasdominik.sft.planner.Folder
+import io.github.diasdominik.sft.planner.LeftoverLine
+import io.github.diasdominik.sft.planner.Leftovers
+import io.github.diasdominik.sft.planner.ProjectTotals
 import io.github.diasdominik.sft.planner.WeightMode
 import io.github.diasdominik.sft.platform.inflateZlib
 import io.github.diasdominik.sft.save.SaveFile
@@ -102,6 +106,11 @@ class ProductionTab(val id: Long, initial: ProductionData, private val gameData:
     }
 
     val uid: String get() = data.metadata.uid.orEmpty()
+    val folderId: String? get() = data.metadata.folder
+
+    fun setFolder(folder: String?) {
+        data = data.copy(metadata = data.metadata.copy(folder = folder))
+    }
 
     /** What this line hands on to others: its products and byproducts per minute. */
     val outputs: Map<String, Double>
@@ -155,6 +164,9 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         private set
 
     val tabs = mutableStateListOf<ProductionTab>()
+
+    /** Folders that group lines into projects, in the order shown. */
+    val folders = mutableStateListOf<Folder>()
 
     /** The alternate recipes the player has unlocked (from hard drives); new lines start with them. */
     var unlockedAlternates by mutableStateOf<List<String>?>(null)
@@ -256,7 +268,96 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         settings.putString(unlockedKey(data.version), json.encodeToString(ListSerializer(String.serializer()), recipes))
     }
 
+    fun createFolder(name: String): Folder {
+        val folder = Folder(newUid(), name.ifBlank { "New project" })
+        folders += folder
+        saveFolders()
+        return folder
+    }
+
+    fun renameFolder(folder: Folder, name: String) {
+        val index = folders.indexOfFirst { it.id == folder.id }
+        if (index < 0 || name.isBlank()) return
+        folders[index] = folder.copy(name = name)
+        saveFolders()
+    }
+
+    /** Removes the folder; its lines stay, outside any folder. */
+    fun deleteFolder(folder: Folder) {
+        folders.removeAll { it.id == folder.id }
+        tabs.filter { it.folderId == folder.id }.forEach { it.setFolder(null) }
+        saveFolders()
+        refreshLeftovers()
+    }
+
+    fun moveToFolder(tab: ProductionTab, folder: Folder?) {
+        tab.setFolder(folder?.id)
+        refreshLeftovers()
+    }
+
+    fun linesIn(folder: Folder?): List<ProductionTab> = tabs.filter { it.folderId == folder?.id }
+
+    /** Totals across a folder's lines that have a plan. */
+    fun totals(folder: Folder?): ProjectTotals =
+        ProjectTotals.of(linesIn(folder).mapNotNull { it.result }, Constants.RESOURCE_AMOUNTS)
+
+    fun setTakeLeftovers(tab: ProductionTab, on: Boolean) {
+        tab.data = tab.data.copy(metadata = tab.data.metadata.copy(takeLeftovers = on))
+        refreshLeftovers()
+    }
+
+    fun toggleLeftoverSource(tab: ProductionTab, source: ProductionTab) {
+        val excluded = tab.data.metadata.leftoverExcluded
+        val updated = if (source.uid in excluded) excluded - source.uid else excluded + source.uid
+        tab.data = tab.data.copy(metadata = tab.data.metadata.copy(leftoverExcluded = updated))
+        refreshLeftovers()
+    }
+
+    /** Lines above [tab] in its folder, whose leftovers it can take. */
+    fun leftoverSources(tab: ProductionTab): List<ProductionTab> {
+        val index = tabs.indexOf(tab)
+        if (index < 0) return emptyList()
+        return tabs.take(index).filter { it.folderId == tab.folderId && !dependsOn(it, tab) }
+    }
+
+    /** Hands every opted-in line the leftovers of the lines above it, as leftover inputs. */
+    private fun refreshLeftovers() {
+        val lines = tabs.map { t ->
+            LeftoverLine(
+                uid = t.uid,
+                folder = t.folderId,
+                takeLeftovers = t.data.metadata.takeLeftovers,
+                excluded = t.data.metadata.leftoverExcluded.toSet(),
+                inputs = t.request.input,
+                byproducts = t.result?.byproducts.orEmpty(),
+                used = t.result?.input?.mapValues { it.value.used }.orEmpty(),
+            )
+        }
+        val wanted = Leftovers.allocate(lines) { source, target ->
+            val s = tabByUid(source)
+            val t = tabByUid(target)
+            s != null && t != null && dependsOnExplicitly(s, t)
+        }
+        for (tab in tabs) {
+            val next = wanted[tab.uid].orEmpty()
+            val current = tab.request.input.filter { it.leftover }
+            val same = next.size == current.size && next.zip(current).all { (a, b) ->
+                a.item == b.item && a.source == b.source && kotlin.math.abs(a.amount - b.amount) < 1e-6
+            }
+            if (!same) tab.updateRequest { r -> r.copy(input = r.input.filterNot { it.leftover } + next) }
+        }
+    }
+
+    private fun saveFolders() {
+        val data = gameData ?: return
+        settings.putString(foldersKey(data.version), json.encodeToString(ListSerializer(Folder.serializer()), folders.toList()))
+    }
+
     private fun restoreTabs(data: GameData) {
+        folders.clear()
+        settings.getString(foldersKey(data.version))?.let {
+            runCatching { json.decodeFromString(ListSerializer(Folder.serializer()), it) }.getOrNull()
+        }?.let { folders.addAll(it) }
         unlockedAlternates = settings.getString(unlockedKey(data.version))?.let {
             runCatching { json.decodeFromString(ListSerializer(String.serializer()), it) }.getOrNull()
         }
@@ -318,10 +419,13 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         val gone = selected.map { it.uid }.toSet()
         for (other in tabs) {
             if (other.request.input.any { it.source in gone }) {
-                other.updateRequest { r -> r.copy(input = r.input.map { if (it.source in gone) it.copy(source = null) else it }) }
+                other.updateRequest { r ->
+                    r.copy(input = r.input.filterNot { it.leftover && it.source in gone }.map { if (it.source in gone) it.copy(source = null) else it })
+                }
             }
         }
         save()
+        refreshLeftovers()
     }
 
     fun tabByUid(uid: String?): ProductionTab? = uid?.let { u -> tabs.firstOrNull { it.uid == u } }
@@ -330,13 +434,19 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
     fun linkableSources(target: ProductionTab): List<ProductionTab> = tabs.filter { it !== target && !dependsOn(it, target) }
 
     /** Whether [tab] takes inputs, directly or through other lines, from [other]. */
-    private fun dependsOn(tab: ProductionTab, other: ProductionTab): Boolean {
+    private fun dependsOn(tab: ProductionTab, other: ProductionTab): Boolean = dependsOn(tab, other, leftovers = true)
+
+    /** Like [dependsOn], counting only links the player made, not leftover hand-overs. */
+    private fun dependsOnExplicitly(tab: ProductionTab, other: ProductionTab): Boolean = dependsOn(tab, other, leftovers = false)
+
+    private fun dependsOn(tab: ProductionTab, other: ProductionTab, leftovers: Boolean): Boolean {
         val seen = HashSet<String>()
         val queue = ArrayDeque(listOf(tab))
         while (queue.isNotEmpty()) {
             val current = queue.removeFirst()
             if (!seen.add(current.uid)) continue
             for (input in current.request.input) {
+                if (input.leftover && !leftovers) continue
                 val source = tabByUid(input.source) ?: continue
                 if (source === other) return true
                 queue += source
@@ -350,7 +460,7 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         if (source === target || dependsOn(source, target)) return
         val outputs = source.outputs.ifEmpty { source.request.production.filter { it.item != null }.associate { it.item!! to it.amount } }
         target.updateRequest { r ->
-            val kept = r.input.filter { it.source != source.uid }
+            val kept = r.input.filter { it.source != source.uid || it.leftover }
             r.copy(input = kept + outputs.map { (item, amount) -> InputItem(item, amount, source.uid) })
         }
     }
@@ -359,9 +469,9 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
     private fun propagate(source: ProductionTab) {
         val outputs = source.outputs
         for (target in tabs) {
-            if (target === source || target.request.input.none { it.source == source.uid }) continue
+            if (target === source || target.request.input.none { it.source == source.uid && !it.leftover }) continue
             val updated = target.request.input.map { input ->
-                if (input.source != source.uid || input.item == null) input else input.copy(amount = outputs[input.item] ?: 0.0)
+                if (input.source != source.uid || input.item == null || input.leftover) input else input.copy(amount = outputs[input.item] ?: 0.0)
             }
             val changed = updated.zip(target.request.input).any { (a, b) -> abs(a.amount - b.amount) > 1e-6 }
             if (changed) target.updateRequest { r -> r.copy(input = updated) }
@@ -373,6 +483,7 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         val tab = tabs.removeAt(from)
         tabs.add(to, tab)
         save()
+        refreshLeftovers()
     }
 
     fun tab(id: Long): ProductionTab? = tabs.firstOrNull { it.id == id }
@@ -391,7 +502,11 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         val uid = production.metadata.uid?.takeIf { u -> tabs.none { it.uid == u } } ?: newUid()
         return production.copy(
             metadata = production.metadata.copy(uid = uid),
-            request = request.copy(resourceMax = resourceMax, resourceWeight = Constants.RESOURCE_WEIGHTS),
+            // Hand-set costs are kept; otherwise the defaults are refreshed.
+            request = request.copy(
+                resourceMax = resourceMax,
+                resourceWeight = if (request.weightMode == WeightMode.MANUAL && production.metadata.uid != null) Constants.RESOURCE_WEIGHTS + request.resourceWeight else Constants.RESOURCE_WEIGHTS,
+            ),
         )
     }
 
@@ -408,7 +523,7 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
                 .debounce { if (first) 0L else 350L }
                 .collectLatest { request ->
                     first = false
-                    if (request.production.none { it.item != null && (it.amount > 0 || it.type == ProductionType.MAXIMIZE) }) {
+                    if (request.production.none { it.item != null && (it.amount > 0 || it.type == ProductionType.MAXIMIZE) } && request.activeGoals.isEmpty()) {
                         tab.status = ResultStatus.NO_INPUT
                         tab.result = null
                         propagate(tab)
@@ -423,6 +538,7 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
                     tab.problems = problems
                     tab.status = if (result == null) ResultStatus.NO_RESULT else ResultStatus.RESULT
                     propagate(tab)
+                    refreshLeftovers()
                 }
         }
     }
@@ -432,5 +548,6 @@ class AppState(private val settings: SettingsStore, val icons: IconStore) : View
         fun tabsKey(version: GameVersion) = "tabs-" + version.id
         fun unlockedKey(version: GameVersion) = "unlocked-alternates-" + version.id
         fun profileKey(version: GameVersion) = "unlock-profile-" + version.id
+        fun foldersKey(version: GameVersion) = "folders-" + version.id
     }
 }

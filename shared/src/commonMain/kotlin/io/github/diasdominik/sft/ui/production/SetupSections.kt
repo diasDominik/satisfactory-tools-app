@@ -52,6 +52,8 @@ import io.github.diasdominik.sft.planner.ProductionRequest
 import io.github.diasdominik.sft.planner.ProductionType
 import io.github.diasdominik.sft.planner.FactoryPower
 import io.github.diasdominik.sft.planner.Somersloop
+import io.github.diasdominik.sft.planner.Goal
+import io.github.diasdominik.sft.planner.ByproductMode
 import io.github.diasdominik.sft.planner.RecipeNode
 import io.github.diasdominik.sft.planner.ClockGrouping
 import io.github.diasdominik.sft.planner.WeightMode
@@ -110,6 +112,7 @@ private fun RowCard(content: @Composable () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 internal fun LazyListScope.productsSection(data: GameData, tab: ProductionTab) {
     item {
         Hint(
@@ -185,6 +188,100 @@ internal fun LazyListScope.productsSection(data: GameData, tab: ProductionTab) {
                 Text("Add product")
             }
             TextButton(onClick = { tab.updateRequest { r -> r.copy(production = listOf(ProductionItem())) } }) { Text("Clear") }
+        }
+    }
+    item(key = "goals") {
+        RowCard {
+            Text("More goals", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Ask for AWESOME Sink points from the leftovers, or spare power for your grid (needs Power plants). " +
+                    "Maximized goals share the scale with maximized products by their ratio.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            GoalEditor("Sink points", "points/min", tab.request.sinkPointsGoal) { g -> tab.updateRequest { r -> r.copy(sinkPointsGoal = g) } }
+            GoalEditor("Spare power", "MW", tab.request.powerGoal) { g -> tab.updateRequest { r -> r.copy(powerGoal = g) } }
+        }
+    }
+    item(key = "leftover-mode") {
+        val request = tab.request
+        RowCard {
+            Text("Leftovers", style = MaterialTheme.typography.titleSmall)
+            Text(
+                when (request.byproductMode) {
+                    ByproductMode.ALLOW -> "Anything the line makes too much of may leave it (sink, storage or another line)."
+                    ByproductMode.CHOSEN -> "Only the items picked here may leave the line; everything else has to be used up."
+                    ByproductMode.NONE -> "Nothing may be left over: the plan uses up everything it makes, or picks other recipes."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ChipRow {
+                ByproductMode.entries.forEach { m ->
+                    FilterChip(
+                        selected = m == request.byproductMode,
+                        onClick = {
+                            tab.updateRequest { r ->
+                                // Start the pick list from what the line leaves over today.
+                                if (m == ByproductMode.CHOSEN && r.allowedByproducts.isEmpty()) {
+                                    r.copy(byproductMode = m, allowedByproducts = tab.result?.byproducts?.keys?.toList().orEmpty())
+                                } else r.copy(byproductMode = m)
+                            }
+                        },
+                        label = { Text(m.label) },
+                    )
+                }
+            }
+            if (request.byproductMode == ByproductMode.CHOSEN) {
+                val candidates = (request.allowedByproducts + tab.result?.byproducts?.keys.orEmpty()).distinct()
+                ChipRow {
+                    candidates.forEach { item ->
+                        FilterChip(
+                            selected = item in request.allowedByproducts,
+                            onClick = { tab.updateRequest { r -> r.copy(allowedByproducts = r.allowedByproducts.toggle(item)) } },
+                            label = { Text(data.nameOf(item)) },
+                            leadingIcon = { EntityIcon(data, item, 18.dp) },
+                        )
+                    }
+                }
+                var picking by remember { mutableStateOf(false) }
+                TextButton(onClick = { picking = true }) { Text("Allow another item…") }
+                if (picking) {
+                    EntityPickerDialog(
+                        data, "Allow as a leftover", data.inputableItems.map { it.className },
+                        onDismiss = { picking = false },
+                        onPick = { picked -> picking = false; tab.updateRequest { r -> r.copy(allowedByproducts = (r.allowedByproducts + picked).distinct()) } },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GoalEditor(label: String, unit: String, goal: Goal?, onChange: (Goal?) -> Unit) {
+    Column(Modifier.padding(top = 8.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        ChipRow {
+            FilterChip(goal == null, onClick = { onChange(null) }, label = { Text("Off") })
+            FilterChip(
+                goal != null && goal.type != ProductionType.MAXIMIZE,
+                onClick = { onChange((goal ?: Goal()).copy(type = ProductionType.PER_MINUTE)) },
+                label = { Text("At least") },
+            )
+            FilterChip(
+                goal?.type == ProductionType.MAXIMIZE,
+                onClick = { onChange((goal ?: Goal()).copy(type = ProductionType.MAXIMIZE)) },
+                label = { Text("Maximize") },
+            )
+        }
+        if (goal != null) {
+            if (goal.type == ProductionType.MAXIMIZE) {
+                NumberField(goal.ratio, { v -> if (v >= 0) onChange(goal.copy(ratio = v)) }, modifier = Modifier.fillMaxWidth(), label = "Ratio")
+            } else {
+                NumberField(goal.amount, { v -> if (v >= 0) onChange(goal.copy(amount = v)) }, modifier = Modifier.fillMaxWidth(), label = "Amount", suffix = unit)
+            }
         }
     }
 }
@@ -352,8 +449,10 @@ internal fun LazyListScope.inputsSection(state: AppState, data: GameData, tab: P
                 "Take them from another production line to feed this one with its output; the amounts then follow that line.",
         )
     }
-    val inputs = tab.request.input
-    itemsIndexed(inputs, key = { index, _ -> "i$index" }) { index, input ->
+    leftoversCard(state, data, tab)
+    // Leftover inputs are managed by the card above; the rest keep their index in the full list.
+    val inputs = tab.request.input.withIndex().filterNot { it.value.leftover }
+    items(inputs, key = { "i" + it.index }) { (index, input) ->
         val source = input.source?.let { state.tabByUid(it) }
         RowCard {
             if (source != null && input.item != null) {
@@ -403,7 +502,7 @@ internal fun LazyListScope.inputsSection(state: AppState, data: GameData, tab: P
                 Text("Add input")
             }
             OutlinedButton(onClick = { picking = true }) { Text("Take from another line") }
-            if (inputs.isNotEmpty()) TextButton(onClick = { tab.updateRequest { r -> r.copy(input = emptyList()) } }) { Text("Clear") }
+            if (inputs.isNotEmpty()) TextButton(onClick = { tab.updateRequest { r -> r.copy(input = r.input.filter { it.leftover }) } }) { Text("Clear") }
         }
         if (picking) {
             val sources = state.linkableSources(tab)
@@ -789,6 +888,67 @@ internal fun LazyListScope.factoryPowerSection(data: GameData, tab: ProductionTa
                             }
                         },
                         label = { Text(data.nameOf(fuel)) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Taking what lines above this one (in the same folder) leave over. */
+@OptIn(ExperimentalLayoutApi::class)
+private fun LazyListScope.leftoversCard(state: AppState, data: GameData, tab: ProductionTab) {
+    item(key = "leftovers-in") {
+        val on = tab.data.metadata.takeLeftovers
+        val sources = state.leftoverSources(tab)
+        RowCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Use leftovers from other lines", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Takes what the lines above this one in its folder leave over, before mining anything. " +
+                            "Lines further down get what's still left.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(on, onCheckedChange = { state.setTakeLeftovers(tab, it) })
+            }
+            if (on) {
+                if (sources.isEmpty()) {
+                    Text("No line above this one in its folder yet. Move this line down or add lines above it.", style = MaterialTheme.typography.bodySmall)
+                }
+                val taken = tab.request.input.filter { it.leftover }
+                val used = tab.result?.input.orEmpty()
+                sources.forEach { source ->
+                    val included = source.uid !in tab.data.metadata.leftoverExcluded
+                    Row(
+                        Modifier.fillMaxWidth().clickable { state.toggleLeftoverSource(tab, source) }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(included, onCheckedChange = null)
+                        Column(Modifier.weight(1f)) {
+                            Text(source.name, style = MaterialTheme.typography.bodyMedium)
+                            val offers = taken.filter { it.source == source.uid }
+                            Text(
+                                when {
+                                    !included -> "Not used"
+                                    offers.isEmpty() -> "Nothing left over"
+                                    else -> offers.joinToString { "${fmt(it.amount)} ${data.nameOf(it.item!!)}" } + " available"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                val usedLeftovers = taken.mapNotNull { it.item }.distinct().mapNotNull { item -> used[item]?.takeIf { it.used > 0 }?.let { item to it.used } }
+                if (usedLeftovers.isNotEmpty()) {
+                    Text(
+                        "This plan uses " + usedLeftovers.joinToString { (item, amount) -> "${fmt(amount)} ${data.nameOf(item)}" } + " per minute from them.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
                 }
             }

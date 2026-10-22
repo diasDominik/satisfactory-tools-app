@@ -104,7 +104,7 @@ fun ItemsScreen(data: GameData, onOpen: (String) -> Unit, actions: @Composable (
                     data, item.className,
                     subtitle = buildList {
                         add(if (item.liquid) "Liquid" else "Solid")
-                        if (item.sinkPoints > 0) add("${fmt(item.sinkPoints.toDouble())} pts")
+                        data.sinkPointsOf(item.className).let { if (it > 0) add("${fmt(it.toDouble())} pts") }
                         if (data.isResource(item.className)) add("Raw resource")
                     }.joinToString(" · "),
                     onClick = { onOpen(item.slug) },

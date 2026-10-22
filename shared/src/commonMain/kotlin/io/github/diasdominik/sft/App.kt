@@ -53,6 +53,7 @@ import io.github.diasdominik.sft.ui.codex.SchematicDetailScreen
 import io.github.diasdominik.sft.ui.codex.SchematicsScreen
 import io.github.diasdominik.sft.icons.LocalIconStore
 import io.github.diasdominik.sft.ui.power.PowerPlannerScreen
+import io.github.diasdominik.sft.ui.production.FolderScreen
 import io.github.diasdominik.sft.ui.production.HardDriveScreen
 import io.github.diasdominik.sft.ui.production.ProductionListScreen
 import io.github.diasdominik.sft.ui.production.ProductionTabScreen
@@ -75,6 +76,7 @@ import org.koin.compose.viewmodel.koinViewModel
 @Serializable data object AboutRoute : NavKey
 @Serializable data object PowerRoute : NavKey
 @Serializable data object HardDriveRoute : NavKey
+@Serializable data class FolderRoute(val id: String?, val uid: Long = newUid()) : NavKey
 
 private fun newUid() = Random.nextLong()
 
@@ -93,6 +95,7 @@ private val navConfig = SavedStateConfiguration {
             subclass(AboutRoute::class, AboutRoute.serializer())
             subclass(PowerRoute::class, PowerRoute.serializer())
             subclass(HardDriveRoute::class, HardDriveRoute.serializer())
+            subclass(FolderRoute::class, FolderRoute.serializer())
         }
     }
 }
@@ -180,7 +183,13 @@ private fun MainContent(state: AppState, data: GameData) {
             onBack = ::pop,
             entryProvider = entryProvider {
                 entry<ProductionListRoute> {
-                    ProductionListScreen(state, data, onOpen = { push(ProductionTabRoute(it)) }, onHardDrive = { push(HardDriveRoute) }, actions = menu)
+                    ProductionListScreen(
+                        state, data,
+                        onOpen = { push(ProductionTabRoute(it)) },
+                        onHardDrive = { push(HardDriveRoute) },
+                        onFolder = { push(FolderRoute(it)) },
+                        actions = menu,
+                    )
                 }
                 entry<ProductionTabRoute> { route ->
                     val tab = state.tab(route.id)
@@ -213,6 +222,7 @@ private fun MainContent(state: AppState, data: GameData) {
                 }
                 entry<AboutRoute> { AboutScreen(onBack = ::pop) }
                 entry<HardDriveRoute> { HardDriveScreen(state, data, onBack = ::pop) }
+                entry<FolderRoute> { route -> FolderScreen(state, data, route.id, onOpenLine = { push(ProductionTabRoute(it)) }, onBack = ::pop) }
                 entry<PowerRoute> {
                     PowerPlannerScreen(
                         data,

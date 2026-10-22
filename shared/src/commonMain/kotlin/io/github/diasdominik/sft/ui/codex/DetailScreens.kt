@@ -81,7 +81,7 @@ fun ItemDetailScreen(data: GameData, item: Item, links: CodexLinks, onBack: () -
         item { Header(data, item.className, item.name, item.description) }
         item {
             SectionCard("Details") {
-                KeyValueRow("Sink points", if (item.sinkPoints > 0) fmt(item.sinkPoints.toDouble()) else "Can't be put into the sink")
+                KeyValueRow("Sink points", data.sinkPointsOf(item.className).let { if (it > 0) fmt(it.toDouble()) else "Can't be put into the sink" })
                 KeyValueRow("Form", if (item.liquid) "Liquid" else "Solid")
                 if (!item.liquid) KeyValueRow("Stack size", item.stackSize.toString())
                 if (item.energyValue > 0) {

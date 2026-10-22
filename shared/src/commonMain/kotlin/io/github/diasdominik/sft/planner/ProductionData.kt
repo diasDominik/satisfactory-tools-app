@@ -30,6 +30,12 @@ data class ProductionMetadata(
     val powerShardsOwned: Int = 0,
     /** App-only: what was built when the player last marked the plan as built, by node key. */
     val builtPlan: Map<String, BuiltStep> = emptyMap(),
+    /** App-only: take leftovers (byproducts) from the lines above this one in its folder. */
+    val takeLeftovers: Boolean = false,
+    /** App-only: lines (by uid) this one shouldn't take leftovers from. */
+    val leftoverExcluded: List<String> = emptyList(),
+    /** App-only: the folder (project) this line belongs to, by folder id. */
+    val folder: String? = null,
 )
 
 @Serializable
@@ -57,7 +63,24 @@ data class InputItem(
     val amount: Double = 10.0,
     /** App-only: [ProductionMetadata.uid] of the line this input comes from; its amount follows that line's output. */
     val source: String? = null,
+    /** App-only: added automatically from another line's leftovers; recalculated, never edited. */
+    val leftover: Boolean = false,
 )
+
+/** An extra goal next to the products: AWESOME Sink points or spare MW for the grid. */
+@Serializable
+data class Goal(
+    val type: String = ProductionType.PER_MINUTE,
+    val amount: Double = 0.0,
+    val ratio: Double = 100.0,
+)
+
+@Serializable
+enum class ByproductMode(val label: String) {
+    ALLOW("Allow any"),
+    CHOSEN("Only these"),
+    NONE("None"),
+}
 
 @Serializable
 data class ProductionRequest(
@@ -94,7 +117,24 @@ data class ProductionRequest(
     /** App-only: like the game's advanced settings, ingredients per craft and building power scaled. */
     val recipeCostMultiplier: Double = 1.0,
     val powerCostMultiplier: Double = 1.0,
+    /** App-only: which leftovers may leave the line (to a sink, storage or another line). */
+    val byproductMode: ByproductMode = ByproductMode.ALLOW,
+    val allowedByproducts: List<String> = emptyList(),
+    /** App-only: AWESOME Sink points per minute from the leftovers. */
+    val sinkPointsGoal: Goal? = null,
+    /** App-only: MW the line's own power plants deliver beyond what it uses; needs [power]. */
+    val powerGoal: Goal? = null,
 ) {
+    /** Whether [item] may leave the line as a leftover. */
+    fun byproductAllowed(item: String): Boolean = when (byproductMode) {
+        ByproductMode.ALLOW -> true
+        ByproductMode.CHOSEN -> item in allowedByproducts
+        ByproductMode.NONE -> false
+    }
+
+    /** Goals that ask for something: a positive amount, or maximising. */
+    val activeGoals: List<Goal> get() = listOfNotNull(sinkPointsGoal, powerGoal).filter { it.isActive }
+
     val recipeCost: Double get() = recipeCostMultiplier.coerceIn(MIN_MULTIPLIER, MAX_MULTIPLIER)
     val powerCost: Double get() = powerCostMultiplier.coerceIn(MIN_MULTIPLIER, MAX_MULTIPLIER)
 
@@ -173,3 +213,9 @@ fun splitBuildings(exact: Double, clockSpeed: Double, grouping: ClockGrouping): 
         ClockGrouping.NONE -> listOf(whole to clockSpeed)
     }
 }
+
+val Goal.isActive: Boolean get() = if (type == ProductionType.MAXIMIZE) ratio > 0 else amount > 0
+
+/** A folder groups production lines into one project, with totals across them. */
+@Serializable
+data class Folder(val id: String, val name: String)

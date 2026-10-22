@@ -163,7 +163,10 @@ class GameData(val version: GameVersion, val raw: GameDataSchema) {
     val alternateRecipes: List<Recipe> by lazy {
         raw.recipes.values.filter { it.alternate }.sortedBy { it.name.removePrefix("Alternate: ") }
     }
-    val sinkableItems: List<Item> by lazy { raw.items.values.filter { it.sinkPoints > 0 }.sortedBy { it.name } }
+    val sinkableItems: List<Item> by lazy { raw.items.values.filter { sinkPointsOf(it.className) > 0 }.sortedBy { it.name } }
+
+    /** AWESOME Sink points for one [item]; fluids can't go into the sink, whatever the data says. */
+    fun sinkPointsOf(item: String): Int = raw.items[item]?.takeIf { !it.liquid }?.sinkPoints ?: 0
 
     val resourceList: List<Resource> by lazy {
         raw.resources.values.sortedBy { raw.items[it.item]?.name ?: it.item }

@@ -201,6 +201,14 @@ internal fun LazyListScope.overviewSection(data: GameData, tab: ProductionTab, r
             if (result.generatedPower > 0) Text("Its own power plants make ${fmt(result.generatedPower)} MW.", style = MaterialTheme.typography.bodySmall)
         }
     }
+    if (result.sinkPoints > 0) {
+        item(key = "ov-sink") {
+            SectionCard("AWESOME Sink") {
+                Text("${fmt(result.sinkPoints)} points/min", style = MaterialTheme.typography.headlineSmall)
+                Text("If every sinkable leftover goes into the sink.", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
     boostSection(data, tab)
     if (result.powerShards > 0) {
         item(key = "ov-shards") {

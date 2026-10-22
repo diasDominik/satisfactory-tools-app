@@ -204,6 +204,8 @@ class ProductionResult(request: ProductionRequest, val graph: ProductionGraph, p
     val alternatesNeeded: List<Recipe> = graph.nodes.filterIsInstance<RecipeNode>()
         .map { it.usage.recipe }.filter { it.alternate }.distinct().sortedBy { it.name }
     val power: PowerDetails = calculatePower()
+    /** AWESOME Sink points per minute if every sinkable leftover goes into the sink. */
+    val sinkPoints: Double = Numbers.round(byproducts.entries.sumOf { (item, amount) -> amount * data.sinkPointsOf(item) })
     /** MW the line's own power plants make (generators scale linearly with clock speed). */
     val generatedPower: Double = Numbers.round(
         graph.nodes.filterIsInstance<RecipeNode>().sumOf { it.usage.amount * it.usage.powerOutput },

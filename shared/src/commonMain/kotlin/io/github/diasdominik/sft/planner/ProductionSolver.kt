@@ -63,7 +63,9 @@ class ProductionSolver(private val data: GameData) {
         val products = request.production.filter { it.item != null && data.item(it.item) != null }
         val perMinute = products.filter { it.type != ProductionType.MAXIMIZE && it.amount > 0 }
         val maximize = products.filter { it.type == ProductionType.MAXIMIZE && it.ratio > 0 }
-        if (perMinute.isEmpty() && maximize.isEmpty()) return null
+        val sinkGoal = request.sinkPointsGoal?.takeIf { it.isActive }
+        val powerGoal = request.powerGoal?.takeIf { it.isActive }
+        if (perMinute.isEmpty() && maximize.isEmpty() && sinkGoal == null && powerGoal == null) return null
 
         val resources = data.resources.keys.filter { resource ->
             resource !in request.blockedResources && Extraction.effectiveLimit(data, request, resource) > 0
@@ -93,6 +95,7 @@ class ProductionSolver(private val data: GameData) {
         val generatorVar = if (power == null) emptyMap() else power.generators.flatMap { (generator, fuels) ->
             fuels.mapNotNull { fuel -> data.recipe(data.powerRecipeClass(generator, fuel)) }
         }.filter { r -> r.ingredients.all { it.item in reachable } }.associateWith { next++ }
+        if (powerGoal != null && generatorVar.isEmpty()) return null
 
         val itemCoefficients = LinkedHashMap<String, MutableMap<Int, Double>>()
         fun coef(item: String) = itemCoefficients.getOrPut(item) { HashMap() }
@@ -122,7 +125,10 @@ class ProductionSolver(private val data: GameData) {
         for (item in demand.keys + maxRatio.keys) coef(item)
 
         val byproductVar = itemCoefficients.keys.associateWith { next++ }
-        val scaleVar = if (maxRatio.isNotEmpty()) next++ else -1
+        val goalRatio = { g: Goal? -> if (g != null && g.type == ProductionType.MAXIMIZE) g.ratio / 100.0 else 0.0 }
+        val goalAmount = { g: Goal? -> if (g != null && g.type != ProductionType.MAXIMIZE) g.amount else 0.0 }
+        val maximizesGoal = goalRatio(sinkGoal) > 0 || goalRatio(powerGoal) > 0
+        val scaleVar = if (maxRatio.isNotEmpty() || maximizesGoal) next++ else -1
         val variableCount = next
 
         fun buildProgram(): LinearProgram {
@@ -132,6 +138,18 @@ class ProductionSolver(private val data: GameData) {
                 if (max < 1e12) lp.upperBounds[variable] = max
             }
             for ((item, variable) in inputVar) lp.upperBounds[variable] = inputAmounts.getValue(item)
+            // Leftovers that may not leave the line have to be used up (or not made).
+            for ((item, variable) in byproductVar) if (!request.byproductAllowed(item)) lp.upperBounds[variable] = 0.0
+            if (sinkGoal != null) {
+                // Points per minute from sinking leftovers ≥ the goal.
+                val row = HashMap<Int, Double>()
+                for ((item, variable) in byproductVar) {
+                    val points = data.sinkPointsOf(item)
+                    if (points > 0 && request.byproductAllowed(item)) row[variable] = points.toDouble()
+                }
+                if (goalRatio(sinkGoal) > 0) row[scaleVar] = -goalRatio(sinkGoal)
+                lp.addConstraint(row, LinearProgram.Relation.GE, goalAmount(sinkGoal))
+            }
             for ((item, coefficients) in itemCoefficients) {
                 val row = HashMap(coefficients)
                 row[byproductVar.getValue(item)] = -1.0
@@ -167,7 +185,9 @@ class ProductionSolver(private val data: GameData) {
                     val use = extractionPowerPerUnit(request, resource)
                     if (use > 0) row[variable] = -use * headroom
                 }
-                lp.addConstraint(row, LinearProgram.Relation.GE, 0.0)
+                // Spare power for the grid on top, when asked for.
+                if (goalRatio(powerGoal) > 0) row[scaleVar] = -goalRatio(powerGoal)
+                lp.addConstraint(row, LinearProgram.Relation.GE, goalAmount(powerGoal))
             }
             return lp
         }

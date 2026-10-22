@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.diasdominik.sft.data.GameData
+import io.github.diasdominik.sft.planner.Folder
 import io.github.diasdominik.sft.planner.ProductionType
 import io.github.diasdominik.sft.planner.SftFormat
 import io.github.diasdominik.sft.platform.rememberSftFileReader
@@ -67,8 +68,10 @@ fun ProductionListScreen(
     data: GameData,
     onOpen: (Long) -> Unit,
     onHardDrive: () -> Unit = {},
+    onFolder: (String?) -> Unit = {},
     actions: @Composable () -> Unit,
 ) {
+    var naming by remember { mutableStateOf<FolderNaming?>(null) }
     val selected = remember { mutableStateListOf<Long>() }
     var showImport by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -132,7 +135,29 @@ fun ProductionListScreen(
                     )
                 }
             }
-            items(state.tabs, key = { it.id }) { tab ->
+            // Lines grouped by folder; lines outside any folder come last.
+            val groups: List<Folder?> = state.folders.toList() + listOf(null)
+            for (folder in groups) {
+                val lines = state.linesIn(folder)
+                if (folder == null && lines.isEmpty() && state.folders.isNotEmpty()) continue
+                if (state.folders.isNotEmpty()) {
+                    item(key = "folder-" + (folder?.id ?: "none")) {
+                        FolderHeader(
+                            name = folder?.name ?: "Not in a folder",
+                            lines = lines.size,
+                            onOverview = { onFolder(folder?.id) },
+                            onNewLine = folder?.let { f ->
+                                {
+                                    val base = state.newProductionData()
+                                    onOpen(state.addTab(base.copy(metadata = base.metadata.copy(folder = f.id))).id)
+                                }
+                            },
+                            onRename = folder?.let { f -> { naming = FolderNaming(f) } },
+                            onDelete = folder?.let { f -> { state.deleteFolder(f) } },
+                        )
+                    }
+                }
+            items(lines, key = { it.id }) { tab ->
                 val isSelected = tab.id in selected
                 Card(
                     Modifier.fillMaxWidth().combinedClickable(
@@ -159,11 +184,43 @@ fun ProductionListScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        if (!selecting) TabMenu(state, tab, share, onOpen)
+                        if (!selecting) TabMenu(state, tab, share, onOpen, onNewFolder = { naming = FolderNaming(null, tab) })
+                    }
+                }
+            }
+            }
+            if (state.tabs.isNotEmpty()) {
+                item(key = "new-folder") {
+                    TextButton(onClick = { naming = FolderNaming(null) }) {
+                        Icon(AppIcons.Folder, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("New folder for a project")
                     }
                 }
             }
         }
+    }
+    naming?.let { n ->
+        var name by remember(n) { mutableStateOf(n.folder?.name ?: "") }
+        AlertDialog(
+            onDismissRequest = { naming = null },
+            title = { Text(if (n.folder == null) "New folder" else "Rename folder") },
+            text = {
+                OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("Name") }, placeholder = { Text("e.g. Phase 4 megafactory") })
+            },
+            confirmButton = {
+                TextButton(enabled = name.isNotBlank(), onClick = {
+                    if (n.folder == null) {
+                        val created = state.createFolder(name.trim())
+                        n.moveLine?.let { state.moveToFolder(it, created) }
+                    } else {
+                        state.renameFolder(n.folder, name.trim())
+                    }
+                    naming = null
+                }) { Text(if (n.folder == null) "Create" else "Rename") }
+            },
+            dismissButton = { TextButton(onClick = { naming = null }) { Text("Cancel") } },
+        )
     }
 
     if (showImport) {
@@ -194,6 +251,40 @@ fun ProductionListScreen(
     }
 }
 
+/** Creating ([folder] null) or renaming a folder; a line to move into the new one, if any. */
+private data class FolderNaming(val folder: Folder?, val moveLine: ProductionTab? = null)
+
+@Composable
+private fun FolderHeader(
+    name: String,
+    lines: Int,
+    onOverview: () -> Unit,
+    onNewLine: (() -> Unit)?,
+    onRename: (() -> Unit)?,
+    onDelete: (() -> Unit)?,
+) {
+    var open by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(AppIcons.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.titleMedium)
+            Text("$lines line${if (lines == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        TextButton(onClick = onOverview) { Text("Totals") }
+        if (onNewLine != null || onRename != null || onDelete != null) {
+            IconButton(onClick = { open = true }) { Icon(AppIcons.MoreVert, contentDescription = "Folder options") }
+            DropdownMenu(open, onDismissRequest = { open = false }) {
+                onNewLine?.let { DropdownMenuItem(text = { Text("New line in this folder") }, leadingIcon = { Icon(AppIcons.Add, null) }, onClick = { open = false; it() }) }
+                onRename?.let { DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(AppIcons.Edit, null) }, onClick = { open = false; it() }) }
+                onDelete?.let {
+                    DropdownMenuItem(text = { Text("Remove folder (keeps its lines)") }, leadingIcon = { Icon(AppIcons.Delete, null) }, onClick = { open = false; it() })
+                }
+            }
+        }
+    }
+}
+
 private fun toggle(list: MutableList<Long>, id: Long) {
     if (!list.remove(id)) list.add(id)
 }
@@ -214,14 +305,48 @@ private fun summary(data: GameData, tab: ProductionTab): String {
 }
 
 @Composable
-private fun TabMenu(state: AppState, tab: ProductionTab, share: (String, String) -> Unit, onOpen: (Long) -> Unit) {
+private fun TabMenu(state: AppState, tab: ProductionTab, share: (String, String) -> Unit, onOpen: (Long) -> Unit, onNewFolder: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
+    var moving by remember { mutableStateOf(false) }
+    // Order matters within a folder: lines take leftovers from the lines above them.
+    val siblings = state.linesIn(state.folders.firstOrNull { it.id == tab.folderId })
+    val position = siblings.indexOf(tab)
     IconButton(onClick = { open = true }) { Icon(AppIcons.MoreVert, contentDescription = "More") }
     DropdownMenu(open, onDismissRequest = { open = false }) {
         DropdownMenuItem(text = { Text("Clone") }, leadingIcon = { Icon(AppIcons.Copy, null) }, onClick = { open = false; onOpen(state.cloneTab(tab).id) })
+        DropdownMenuItem(text = { Text("Move to folder…") }, leadingIcon = { Icon(AppIcons.Folder, null) }, onClick = { open = false; moving = true })
+        if (position > 0) {
+            DropdownMenuItem(text = { Text("Move up") }, leadingIcon = { Icon(AppIcons.ArrowUp, null) }, onClick = {
+                open = false
+                state.moveTab(state.tabs.indexOf(tab), state.tabs.indexOf(siblings[position - 1]))
+            })
+        }
+        if (position in 0 until siblings.lastIndex) {
+            DropdownMenuItem(text = { Text("Move down") }, leadingIcon = { Icon(AppIcons.ArrowDown, null) }, onClick = {
+                open = false
+                state.moveTab(state.tabs.indexOf(tab), state.tabs.indexOf(siblings[position + 1]))
+            })
+        }
         DropdownMenuItem(text = { Text("Export") }, leadingIcon = { Icon(AppIcons.Share, null) }, onClick = { open = false; share(tab.name, exportTabs(listOf(tab))) })
         DropdownMenuItem(text = { Text("Remove") }, leadingIcon = { Icon(AppIcons.Delete, null) }, onClick = { open = false; confirmRemove = true })
+    }
+    if (moving) {
+        AlertDialog(
+            onDismissRequest = { moving = false },
+            title = { Text("Move \"${tab.name}\" to") },
+            text = {
+                Column {
+                    (state.folders.toList() + listOf(null)).forEach { folder ->
+                        TextButton(onClick = { moving = false; state.moveToFolder(tab, folder) }, enabled = folder?.id != tab.folderId) {
+                            Text(folder?.name ?: "No folder", modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                    TextButton(onClick = { moving = false; onNewFolder() }) { Text("New folder…", modifier = Modifier.fillMaxWidth()) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { moving = false }) { Text("Cancel") } },
+        )
     }
     if (confirmRemove) {
         AlertDialog(

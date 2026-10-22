@@ -9,7 +9,23 @@ class ProductionDiagnosis(private val data: GameData) {
 
     fun explain(request: ProductionRequest): List<String> {
         val products = request.production.mapNotNull { p -> p.item?.takeIf { data.item(it) != null } }.distinct()
-        if (products.isEmpty()) return listOf("Pick a product to make.")
+        if (request.powerGoal?.isActive == true && request.power?.generators.isNullOrEmpty()) {
+            return listOf("Spare power needs power plants in this line. Turn them on under Power plants.")
+        }
+        if (products.isEmpty() && request.activeGoals.isEmpty()) return listOf("Pick a product to make.")
+        // Leftover limits are a common cause; check whether the plan works without them.
+        if (request.byproductMode != ByproductMode.ALLOW && solver.solve(request.copy(byproductMode = ByproductMode.ALLOW)) != null) {
+            val leftovers = solver.solve(request.copy(byproductMode = ByproductMode.ALLOW))!!.byproducts.keys
+                .filterNot { request.byproductAllowed(it) }.map { name(it) }
+            return listOf(
+                "This needs leftovers that aren't allowed to leave the line" +
+                    (if (leftovers.isEmpty()) "." else ": ${leftovers.joinToString()}.") +
+                    " Allow them under Products, or enable recipes or power plants that use them up.",
+            )
+        }
+        if (products.isEmpty()) {
+            return listOf("No plan reaches the sink or power goal. Try raising resource limits or enabling more recipes.")
+        }
 
         val allowed = solver.allowedRecipes(request)
         val available = availableSources(request)
