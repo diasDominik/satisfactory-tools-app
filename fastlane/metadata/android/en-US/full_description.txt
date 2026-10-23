@@ -1,0 +1,16 @@
+A fan-made mobile port of Satisfactory Tools (satisfactorytools.com) by greeny, for planning your factories in Satisfactory 1.0.
+
+Production planner
+• Plan several production lines with target rates or "maximize" goals.
+• Choose which raw resources, alternate recipes and buildings to use, and add inputs you already have.
+• See raw resources, products and byproducts, building counts, build costs and power, plus an interactive production graph.
+• The planner runs on your device, so it works offline.
+• Import and export .sft files that are compatible with the website.
+
+Codex
+• Items, buildings and schematics with recipes, usages and building costs.
+• Overclock calculators for manufacturers, extractors and generators.
+
+Also includes a power planner, hard drive research advice and a game version switch between 1.0 and 1.0 + FICSMAS.
+
+Satisfactory is a trademark of Coffee Stain Studios. This app is a fan project and is not affiliated with or endorsed by Coffee Stain Studios. The game data and planner logic come from the open source Satisfactory Tools project (MIT license).

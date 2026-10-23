@@ -47,4 +47,6 @@ the upstream license forbids using them in derivative works.
 Copy `data/data1.0.json` (and `data1.0-ficsmas.json`) from upstream into
 `shared/src/commonMain/composeResources/files/`.
 
+For Play Store releases, see [RELEASING.md](RELEASING.md).
+
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for licenses of reused code and data.

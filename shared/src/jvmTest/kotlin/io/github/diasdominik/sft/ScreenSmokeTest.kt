@@ -6,6 +6,7 @@ import androidx.compose.ui.use
 import io.github.diasdominik.sft.data.DataLoader
 import io.github.diasdominik.sft.data.GameVersion
 import io.github.diasdominik.sft.ui.AboutScreen
+import io.github.diasdominik.sft.ui.LicensesScreen
 import io.github.diasdominik.sft.ui.SatisfactoryTheme
 import io.github.diasdominik.sft.ui.codex.BuildingDetailScreen
 import io.github.diasdominik.sft.ui.codex.BuildingsScreen
@@ -46,7 +47,8 @@ class ScreenSmokeTest {
     @Test fun item() = render { ItemDetailScreen(data, data.itemBySlug("iron-plate")!!, links, onBack = {}) }
     @Test fun building() = render { BuildingDetailScreen(data, data.buildingBySlug("constructor")!!, links, onBack = {}) }
     @Test fun schematic() = render { SchematicDetailScreen(data, data.schematics.values.first(), links, onBack = {}) }
-    @Test fun about() = render { AboutScreen(onBack = {}) }
+    @Test fun about() = render { AboutScreen(onLicenses = {}, onBack = {}) }
+    @Test fun licenses() = render { LicensesScreen(onBack = {}) }
     @Test fun layout() {
         val request = ProductionRequest(production = listOf(ProductionItem("Desc_IronPlateReinforced_C", amount = 5.0)))
         val result = ProductionResult(request, ProductionGraph.from(ProductionSolver(data).solve(request)!!), data)

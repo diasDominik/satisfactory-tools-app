@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinxSerialization)
     alias(libs.plugins.koinCompiler)
+    alias(libs.plugins.aboutLibraries)
 }
 
 kotlin {
@@ -66,6 +67,7 @@ kotlin {
             implementation(libs.ksafe)
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.io.core)
+            implementation(libs.aboutlibraries.compose.m3)
 
             implementation(project.dependencies.platform(libs.koin.bom))
             implementation(libs.koin.core)
@@ -83,9 +85,37 @@ kotlin {
     }
 }
 
+aboutLibraries {
+    collect {
+        // Code and data reused from other projects that aren't Gradle dependencies.
+        configPath = file("aboutlibraries")
+    }
+    export {
+        excludeFields.addAll("funding")
+    }
+    library {
+        // One entry per library instead of one per platform artifact (foo-android, foo-jvm, ...).
+        mergePlatformArtifacts = true
+    }
+}
+
+// The licenses screen reads files/aboutlibraries.json from the compose resources. It is generated on every build
+// rather than committed, so it always matches the dependencies: the common resources are copied next to it and
+// the copy is what compose packages.
+val composeResourcesDir = layout.buildDirectory.dir("generated/composeResourcesWithLicenses")
+val composeResourcesWithLicenses = tasks.register<Sync>("composeResourcesWithLicenses") {
+    from("src/commonMain/composeResources")
+    from(tasks.named("exportLibraryDefinitions")) { into("files") }
+    into(composeResourcesDir)
+}
+
 compose.resources {
     publicResClass = true
     packageOfResClass = "io.github.diasdominik.sft.resources"
+    customDirectory(
+        sourceSetName = "commonMain",
+        directoryProvider = composeResourcesWithLicenses.map { composeResourcesDir.get() },
+    )
 }
 
 dependencies {

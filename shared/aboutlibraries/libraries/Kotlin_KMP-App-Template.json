@@ -1,0 +1,18 @@
+{
+  "uniqueId": "Kotlin:KMP-App-Template",
+  "name": "KMP App Template",
+  "description": "The Gradle setup, iOS Xcode project and app entry points started from this template.",
+  "website": "https://github.com/Kotlin/KMP-App-Template",
+  "developers": [
+    {
+      "name": "JetBrains",
+      "organisationUrl": "https://www.jetbrains.com/"
+    }
+  ],
+  "scm": {
+    "url": "https://github.com/Kotlin/KMP-App-Template"
+  },
+  "licenses": [
+    "Apache-2.0"
+  ]
+}

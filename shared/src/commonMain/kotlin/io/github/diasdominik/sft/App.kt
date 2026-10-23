@@ -43,6 +43,7 @@ import io.github.diasdominik.sft.data.GameData
 import io.github.diasdominik.sft.data.GameVersion
 import io.github.diasdominik.sft.state.AppState
 import io.github.diasdominik.sft.ui.AboutScreen
+import io.github.diasdominik.sft.ui.LicensesScreen
 import io.github.diasdominik.sft.ui.SatisfactoryTheme
 import io.github.diasdominik.sft.ui.codex.BuildingDetailScreen
 import io.github.diasdominik.sft.ui.codex.BuildingsScreen
@@ -74,6 +75,7 @@ import org.koin.compose.viewmodel.koinViewModel
 @Serializable data object SchematicsRoute : NavKey
 @Serializable data class SchematicRoute(val slug: String, val uid: Long = newUid()) : NavKey
 @Serializable data object AboutRoute : NavKey
+@Serializable data object LicensesRoute : NavKey
 @Serializable data object PowerRoute : NavKey
 @Serializable data object HardDriveRoute : NavKey
 @Serializable data class FolderRoute(val id: String?, val uid: Long = newUid()) : NavKey
@@ -93,6 +95,7 @@ private val navConfig = SavedStateConfiguration {
             subclass(SchematicsRoute::class, SchematicsRoute.serializer())
             subclass(SchematicRoute::class, SchematicRoute.serializer())
             subclass(AboutRoute::class, AboutRoute.serializer())
+            subclass(LicensesRoute::class, LicensesRoute.serializer())
             subclass(PowerRoute::class, PowerRoute.serializer())
             subclass(HardDriveRoute::class, HardDriveRoute.serializer())
             subclass(FolderRoute::class, FolderRoute.serializer())
@@ -220,7 +223,8 @@ private fun MainContent(state: AppState, data: GameData) {
                     if (schematic == null) LaunchedEffect(route) { pop() }
                     else SchematicDetailScreen(data, schematic, links, onBack = ::pop)
                 }
-                entry<AboutRoute> { AboutScreen(onBack = ::pop) }
+                entry<AboutRoute> { AboutScreen(onLicenses = { push(LicensesRoute) }, onBack = ::pop) }
+                entry<LicensesRoute> { LicensesScreen(onBack = ::pop) }
                 entry<HardDriveRoute> { HardDriveScreen(state, data, onBack = ::pop) }
                 entry<FolderRoute> { route -> FolderScreen(state, data, route.id, onOpenLine = { push(ProductionTabRoute(it)) }, onBack = ::pop) }
                 entry<PowerRoute> {
