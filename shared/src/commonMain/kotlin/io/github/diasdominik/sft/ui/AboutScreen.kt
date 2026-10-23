@@ -2,10 +2,11 @@ package io.github.diasdominik.sft.ui
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 
 @Composable
-fun AboutScreen(onBack: () -> Unit) {
+fun AboutScreen(onLicenses: () -> Unit, onBack: () -> Unit) {
     DetailScaffold("About", onBack) {
         item {
             Text("Satisfactory Tools", style = MaterialTheme.typography.headlineSmall)
@@ -29,6 +30,14 @@ fun AboutScreen(onBack: () -> Unit) {
                         "your device for offline use; they belong to Coffee Stain Studios. The app ships its own simple icons, which " +
                         "show until the download is done and for anything the wiki doesn't have.\n" +
                         "• Only game version 1.0 (and the 1.0 FICSMAS data) is supported.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        item {
+            SectionCard("Open source licenses", actions = { TextButton(onClick = onLicenses) { Text("Show") } }) {
+                Text(
+                    "This app is built with open source libraries. See their copyrights and licenses.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }

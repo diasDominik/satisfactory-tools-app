@@ -1,0 +1,18 @@
+{
+  "uniqueId": "greeny:SatisfactoryTools",
+  "name": "Satisfactory Tools",
+  "description": "The game data and the production planner logic this app is ported from.",
+  "website": "https://github.com/greeny/SatisfactoryTools",
+  "developers": [
+    {
+      "name": "greeny",
+      "organisationUrl": "https://www.satisfactorytools.com/"
+    }
+  ],
+  "scm": {
+    "url": "https://github.com/greeny/SatisfactoryTools"
+  },
+  "licenses": [
+    "MIT"
+  ]
+}
